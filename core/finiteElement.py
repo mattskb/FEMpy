@@ -3,35 +3,6 @@ from numpy.linalg import norm
 from gaussquad import gaussPts
 from shapefuncs import ShapeFunctions
 
-#--------------------------------------------------------------------------------------#
-
-def affine_map(vertices):
-    """ affine transformation F : K_ref -> K, where F(x) = a x + b, for x in K_ref
-    Input:
-        vertices - local vertices to coordinate matrix
-    Output:
-        B, b, det (2D: meas = |det|/2, 1D: meas = |det|)
-    """
-    if len(vertices) == 3:
-        tmp1 = vertices[1] - vertices[0]
-        tmp2 = vertices[2] - vertices[0]
-
-        a = np.array([tmp1, tmp2]).T
-        a_inv = np.linalg.inv(a)
-        det = np.linalg.det(a)
-        b = vertices[0]
-    else:
-        tmp1 = (vertices[1] - vertices[0])/2
-        tmp2 = 2*np.ones(2)
-
-        a = np.array([tmp1, tmp2]).T
-        #a_inv = np.linalg.inv(a)
-        a_inv = None
-        det = np.linalg.det(a)
-        b = (vertices[0] + vertices[1])/2
-    return a, a_inv, det, b
-
-#--------------------------------------------------------------------------------------#
 
 class Element:
     """ Finite Element class
@@ -40,64 +11,56 @@ class Element:
             gauss - degree of Gaussian quadrature
     """
     def __init__(self, deg, gauss):
-
-
         self.__deg = deg
         self.__gauss = gauss
         self.__sfns = ShapeFunctions(self.__deg)
-
-    def initialized(self):
-        """ return True if element is initialized """
-        return self.__initialized
-
 
     def deg(self):
         """ return degree of element """
         return self.__deg
 
-
-    def initialize(self, gauss):
-        """ initialize finite element
-        Input:
-            dim - spatial dimension of finite element
-            gauss - degree of Gaussian quadrature
-        """
-        sfns = ShapeFunctions(self.__deg); n_dofs = sf.n_dofs()
-
-        self.__gauss = gauss
-        self.__sfns = sfns
-        self.__n_dofs = n_dofs
-        self.__initialized = True
-
     def n_dofs(self):
         """ return number of dofs """
         return self.__sfns.n_dofs()
 
-    def set_data(self, vertices, signs=None):
-        """ set local vertex to coordinate matrix """
+    def set_data(self, vertices, dofs):
+        """Set data for element
+        Input:
+            vertices    - vertex coords of element
+            dofs        - DOF coords of elememt (must correspond to degree) 
+        """
+        assert dofs.shape[0] == self.n_dofs(), "DOFs incompatible with degree of element."
 
-        # initialize affine transform
-        a, a_inv, det, b = affine_map(vertices)
-        self.__a = a
-        self.__a_inv = a_inv
-        self.__det = det
-        self.__b = b
-
-        # set data
         self.__vertices = vertices
-        self.__signs = signs
+        self.__dofs = dofs
+
+        # calculate determinant of Jacobian of transformation xi -> x (ref to elt)
+        tmp1 = vertices[1] - vertices[0]
+        tmp2 = vertices[2] - vertices[0]
+
+        a = np.array([tmp1, tmp2]).T
+        det = np.linalg.det(a)
+        self.__det = det
 
     def measure(self):
-        """ returns measure of element (area in 2d, length in 1d) """
-        return abs(self.__det)/self.__dim
+        """ returns measure (area) of element """
+        return abs(self.__det)/2
+
+    def eval(self, n, x):
+        """ evaluate shape function at global coord x
+        Input:
+            n - n'th shape function to be evaluated
+            x - global coord
+        """
+
+        xi = self.map_to_ref(x)
+        return self.__sfns[k].eval(n, xi, derivative=False)
 
     def map_to_elt(self, xi):
         """ maps ref coord xi to global coord x """
-        return np.dot(self.__a, xi) + self.__b
-
-    def map_to_ref(self, x):
-        """ maps global coord x to local coord xi of reference element """
-        return np.linalg.solve(self.__a, x - self.__b)
+        x = np.sum([self.__sfns.eval(j, xi)*self.__dofs(j,0) for j in self.n_dofs()], axis=0)
+        y = np.sum([self.__sfns.eval(j, xi)*self.__dofs(j,1) for j in self.n_dofs()], axis=0)
+        return np.array([x,y])
 
     def integrate(self, f, gauss=None):
         """ integrate (global) function f over element
@@ -130,17 +93,7 @@ class Element:
         else:
             return 2./self.measure()
 
-    def eval(self, n, x):
-        """ evaluate shape function at global coord x
-        Input:
-            n - n'th shape function to be evaluated
-            x - global coord
-        """
-        if self.__deg == 0:
-            return 1.
-        else: # lagrange of order 1,2 or 3
-            xi = self.map_to_ref(x)
-            return self.__sfns[k].eval(n, xi, derivative=False)
+    
 
     def deval(self, n, x):
         """ evaluate shape function derivative at global coord x
@@ -157,12 +110,12 @@ class Element:
             xi = self.map_to_ref(x)
             return np.dot(self.__sfns[k].eval(n, xi, derivative=True), self.jacobi())
 
-    def evaluate(self, n, x, derivative=False, m=0):
+    def evaluate(self, n, x, derivative=False):
         """ evaluate shape functions """
         if derivative:
-            return self.deval(n, x, m)
+            return self.deval(n, x)
         else:
-            return self.eval(n, x, m)
+            return self.eval(n, x)
 
     def assemble_stress(self, d1=0, d2=0, c=None):
         """ Assemble parts of stress tensor (for element), i.e. (partial_x phi_i, partial_y phi_j)
