@@ -2,47 +2,52 @@ import numpy as np
 import math
 
 
-def plot_mesh(vertex_to_coords, elt_to_vertex, dof_to_coords=None, figsize=(8,6), savefig=None):
-    """Plots trianglular mesh defined with or without dof overlay
+def plot_mesh(vertex_to_coords, elt_to_vertex, dof_to_coords, title, figsize, savefig):
+    """Plots trianglular mesh with or without DOFs indicated
     Input:
         vertex_to_coords 	- vertex number to coordinates 
         elt_to_vertex 	 	- element number to vertex number
         dof_to_coords 		- DOF number to coordinate (optional)
-        figsize				- size of figure (optional)
-        savefig 			- file name of saved figure (optional)
+        figsize	    		- size of figure (optional)
+        savefig 	    	- file name of saved figure (optional)
     """
     import matplotlib.pyplot as plt
 
-    if dof_to_coords:
-        plt.figure('Mesh plot with DOFs', figsize=figsize)
-    else:
-        plt.figure('Mesh plot', figsize=figsize)
-
+    # initialize figure
+    plt.figure(figsize=figsize)
 
     # plot mesh
     x = vertex_to_coords[:,0]; y = vertex_to_coords[:,1]
-    plt.gca().set_aspect('equal')
-    plt.triplot(x, y, elt_to_vertex[:,:3], 'g-', linewidth=.5)
+    plt.gca().set_aspect("equal")
+    plt.triplot(x, y, elt_to_vertex, "g-", linewidth=.5)
 
     # plot DOFs
-    if dof_to_coords:
+    if dof_to_coords is not None:
         dof_x = dof_to_coords[:,0]; dof_y = dof_to_coords[:,1]
-        plt.plot(dof_x,dof_y,'go')
-        plt.title('Triangular mesh with DOFs.')
-    else:
-        plt.title('Triangular mesh.')
+        plt.plot(dof_x,dof_y,"go",markersize=20)
 
-    plt.xlabel('x')
-    plt.ylabel('y')
+    # set title
+    if title is None:
+        if dof_to_coords is None:
+            plt.title("Triangular mesh.")
+        else:
+            plt.title("Triangular mesh with DOFs.")
+    else:
+        plt.title(title)
+
+    plt.xlabel("x")
+    plt.ylabel("y")
 
 
     # save figure
-    if savefig:
+    if savefig is not None:
         plt.savefig(savefig)
 
     plt.show()
 
-def regular_mesh_data(box=([0,1],[0,1]), res=(4,4), deg=1, diag='right'):
+#--------------------------------------------------------------------------------------#
+
+def regular_mesh_data(box, res, diag):
     """Data for regular triangular mesh
     Input:
         box 				- bounding box ([start_x,end_x],[start_y,end_y])
@@ -55,7 +60,7 @@ def regular_mesh_data(box=([0,1],[0,1]), res=(4,4), deg=1, diag='right'):
 
     # check valid data
     assert len(box) == len(res), 'Incompatible box and res arguments.'
-    if len(box != 2)
+    if len(box)!= 2:
     	raise ValueError('Invalid box and res arguments.')
 
     # check valid diagonal arg
@@ -63,26 +68,34 @@ def regular_mesh_data(box=([0,1],[0,1]), res=(4,4), deg=1, diag='right'):
     assert diag in {'left','l','right','r'}, 'Invalid diagonal argument.'
     
     x = box[0]; y = box[1]                      # bounding box
-    nx = res[0]; ny = res[1]                    # number of divisions of box in each direction
+    nx = res[0]; ny = res[1]                    # number of cells in each direction (2 elts per cell)
     nx_vertex = nx+1; ny_vertex = ny+1    		# number of vertex in x and y directions
     n_vertex = nx_vertex*ny_vertex              # total number of vertex
     n_elts = 2*nx*ny                            # total number of elements
 
     # assemble vertex_to_coords
+    # numbered from bottom left, then right, then one up start from left again 
     xx = np.linspace(x[0],x[1],nx_vertex)
     yy = np.linspace(y[0],y[1],ny_vertex)
     vertex_to_coords = []
+
+    # loop over vertexes
     for iy in range(ny_vertex):
         for ix in range(nx_vertex):
             vertex_to_coords.append([xx[ix], yy[iy]])
     vertex_to_coords = np.array(vertex_to_coords, dtype=float)
     assert len(vertex_to_coords) == n_vertex, 'Assembly of vertex_to_coords failed.'
 
-    # assemble elt_to_vertex, anti-clockwise numbering of nodes (start from bottom left)
+    # assemble elt_to_vertex
+    # numbering follows cell numbering (bottom left to right, one up, left to right etc.)
+    # lower elt in cell comes before upper elt
+    # anti-clockwise numbering of vertexes (start from bottom left)
     elt_to_vertex = []
 
+    # loop over cells
     for iy in range(ny):
         for ix in range(nx):
+            # vertexes of cell (ix,iy), from bottom left, anti-clockwise
             v0 = iy*nx_vertex+ix; v1 = v0+1
             v2 = v0+nx_vertex; v3 = v2+1
 
@@ -100,227 +113,159 @@ def regular_mesh_data(box=([0,1],[0,1]), res=(4,4), deg=1, diag='right'):
 
 #--------------------------------------------------------------------------------------#
 
-def regular_mesh_bdata(res=[4,4]):
-    """Boundary data for regular triangular mesh 
-    Input:
-        res - number of divisions of x and y (nx,ny)
-    Output:
-        boundary - dictionary of edge number to node numbers matrices
-    """
-
-
-    # raise ValueError('Invalid res argument.')
-    
-    nx = res[0]; ny = res[1]                    # number of divisions of interval
-    n_bedges = 2*nx + 2*ny                      # number of boundary edges
-    nx_vertex = deg*nx+1; ny_vertex = deg*ny+1    # number of nodes in x and y directions
-
-    bottom = []; top = []; right = []; left = []
-    # assemble edge_to_nodes
-    for n in range(nx):
-        n *= deg
-        bnodes = [n+i for i in range(deg+1)]
-        bottom.append([bnodes[0], bnodes[-1]] + [bnodes[i] for i in range(1,deg)])
-
-        tnodes = [nx_vertex*ny_vertex - (n+i) for i in range(1,deg+2)]
-        #top.append([tnodes[0], tnodes[-1]] + [tnodes[i] for i in range(1,deg)])
-        top.append([tnodes[-1], tnodes[0]] + [tnodes[i] for i in range(1,deg)])
-
-    for n in range(ny):
-        rnodes = [(n*deg+i)*nx_vertex-1 for i in range(1,deg+2)]
-        right.append([rnodes[0], rnodes[-1]] + [rnodes[i] for i in range(1,len(rnodes)-1)])
-
-        lnodes = [(n*deg+i)*nx_vertex for i in range(deg+1)]
-        left.append([lnodes[-1], lnodes[0]] + [lnodes[i] for i in range(1,len(lnodes)-1)])
-
-    top.reverse(); #left.reverse()
-    boundary = {'bottom':bottom, 'top':top, 'right':right, 'left':left}
-
-
-        
-
-    return boundary
-
-#--------------------------------------------------------------------------------------#
-
-class SuperMesh(object):
-    """ super class for meshes """
-    def __init__(self, vertex_to_coords, elt_to_vertex, boundary=None):
+class Mesh:
+    """Triangular mesh """
+    def __init__(self, vertex_to_coords, elt_to_vertex):
         """
         Input:
-            vertex_to_coords - node number to coordinates matrix
-            elt_to_vertex - elt number to node numbers matrix
-            boundary - dictionary of boundary edge to nodes matrices (optional)
+            vertex_to_coords        - vertex number to coordinates, i.e., np.array([[x, y]], float) 
+            elt_to_vertex           - element number to vertex numbers, i.e., np.array([[v0, v1, v2]], int) 
         """
-
-        elt_to_vcoords = vertex_to_coords[elt_to_vertex[:,:3]]         # elt number to vertex coords
-        n_elts = elt_to_vertex.shape[0]                                  # number of elements
-        n_vertices = vertex_to_coords.shape[0]                            # number of vertices
-        n_edges = n_elts + n_vertices - 1                               # number of edges (Eulers formula for 2D)
 
         # set data
         self.__vertex_to_coords = vertex_to_coords
         self.__elt_to_vertex = elt_to_vertex
-        self.__elt_to_vcoords = elt_to_vcoords
-        self.__boundary = boundary
-        self.__n_elts = n_elts
-        self.__n_vertices = n_vertices
-        self.__n_edges = n_edges
 
     def n_elts(self):
         """ return number of elements in mesh """
-        return self.__n_elts
+        return self.__elt_to_vertex.shape[0]
 
     def n_vertices(self):
         """ return number of vertices in mesh """
-        return self.__n_vertices
+        return self.__vertex_to_coords.shape[0]
 
     def n_edges(self):
-        """ return number of edges (only for 2D mesh) """
-        return self.__n_edges
+        """ return number of edges (Eulers formula) """
+        return self.n_elts() + self.n_vertices() - 1
 
-    def vertex_to_coords(self):
-        """ get node number to coordinate matrix """
-        return self.__vertex_to_coords
+    def vertex_to_coords(self, n=None):
+        """Get vertex number to coordinates (global or of vertex n) """
+        if n is None:
+            return self.__vertex_to_coords
+        else:
+            return self.__vertex_to_coords[n,:]
 
-    def elt_to_vertex(self):
-        """ get elt number to node numbers matrix """
-        return self.__elt_to_vertex
+    def elt_to_vertex(self, n=None):
+        """ get elt number to vertex numbers (global or of elt n) """
+        if n is None:
+            return self.__elt_to_vertex
+        else:
+            return self.__elt_to_vertex[n,:]
 
     def elt_to_vcoords(self, n=None):
-        """ return element number to vertex coords matrix, or vertex coords of element n """
+        """return element number to vertex coords, or vertex coords of element n 
+        i.,e, n_eltsx3x2 or 3x2 array """
         if n is None:
-            return self.__elt_to_vcoords
+            return self.__vertex_to_coords[self.__elt_to_vertex]
         else:
-            return self.__elt_to_vcoords[n]
+            return self.__vertex_to_coords[self.__elt_to_vertex[n,:]]
 
     def elt_to_ccoords(self, n=None):
-        """ return element number to center coords matrix or center coord of element n """
+        """ return element number to center coords or center coord of element n """
         if n is None:
-            return np.array([sum(self.elt_to_vcoords(j))/(self.dim()+1) for j in range(self.n_elts())])
+            return np.sum(self.elt_to_vcoords(),axis=1)/3  
         else:
-            return sum(self.elt_to_vcoords(n))/(self.dim()+1)
-
-
-    def plot(self, dofs=None, file=None):
-        """ plot figure of mesh
+            return np.sum(self.elt_to_vcoords(n),axis=0)/3
+            
+    def plot(self, dof_to_coords=None, title=None, figsize=(10,10), savefig=None):
+        """ plot mesh
         DOFs given by dofs can be shown in figure
         file - name of .pdf file if figure is saved
         """
-        plot_mesh(self.__vertex_to_coords, self.__elt_to_vertex, dofs=dofs, file=file)
+        plot_mesh(self.__vertex_to_coords, self.__elt_to_vertex, dof_to_coords,
+            title, figsize, savefig)
 
 #--------------------------------------------------------------------------------------#
 
-class RegularMesh(SuperMesh):
-    """ super class for regular meshes """
-    def __init__(self, box=[[0,1], [0,1]], res=[4,4], diag='right'):
+class RectangleMesh(Mesh):
+    """Rectangle shaped triangular mesh (unit square is default) """
+    def __init__(self, x=[0,1], y=[0,1], nx=4, ny=4, diag='right'):
         """
-        Input: (if 1D, then first arg of box and res neglected)
-            box - bounding box
-            res - subdivisions of box in x (and y directions)
-            diag - left or right (only for 2D mesh)
+        Input: 
+            x,y             - intervals defining rectangle box
+            nx,ny           - subdivisions in x and y directions
+            diag            - left or right 
         """
         # get data
-        vertex_to_coords, elt_to_vertex = regular_mesh_data(box=box, res=res, diag=diag)
-        boundary = regular_mesh_bdata(res=res)
+        vertex_to_coords, elt_to_vertex = regular_mesh_data((x, y), (nx, ny), diag)
 
-        dim = len(box)
-        super(RegularMesh, self).__init__(vertex_to_coords, elt_to_vertex, boundary)
-        self.__box = box
-        self.__res = res
+        super(RectangleMesh, self).__init__(vertex_to_coords, elt_to_vertex)
+        self.__box = (x, y)
+        self.__res = (nx, ny)
         self.__diag = diag
 
     def mesh_size(self):
         """ return h - size of elements in mesh """
-        if self.dim() == 2:
-            return max((self.__box[0][1] - self.__box[0][0])/float(self.__res[0]),\
-                       (self.__box[1][1] - self.__box[1][0])/float(self.__res[1]))
-        else:
-            return (self.__box[0][1] - self.__box[0][0])/float(self.__res[0])
-
-
-    def get_lagrange_data(self, deg=1):
-        """ get Lagrange element data
-        Input:
-            deg - degree of Lagrange basis functions
-        Returns:
-            vertex_to_coords - node number to coordinate matrix
-            elt_to_vertex - elt number to node numbers matrix
-        """
-        # check valid degree
-        assert isinstance(deg, int) and 0 <= deg and deg <= 3, 'Invalid degree. Lagrange data only for deg=0,1,2,3.'
-
-        # get data
-        if deg == 0:
-            return self.elt_to_ccoords(), np.array([[n] for n in range(self.n_elts())])
-        elif deg == 1:
-            return self._SuperMesh__vertex_to_coords, self._SuperMesh__elt_to_vertex
-        else: # deg is 2 or 3
-            return regular_mesh_data(self.__box, self.__res, deg=deg, diag=self.__diag)
-
-    def get_bdata(self, deg=1):
-        """ get Lagrange element boundary data
-        Input:
-            deg - degree of Lagrange basis functions
-        Returns:
-            boundary - dictionary of edge_to_nodes """
-
-        # check valid degree
-        assert isinstance(deg, int) and 0 <= deg and deg <= 3, 'Invalid degree. Lagrange data only for deg=0,1,2,3.'
-
-        # get boundary data
-        if deg == 0:
-            if self.dim() == 2:
-                x,y = self.__box; nx,ny = self.__res
-
-                # assemble boundary groups
-                bottom = []; top = []; left = []; right = []
-                for n in range(nx):
-                    bottom.append([2*n])
-                    top.append([2*(nx*ny-n)-1])
-
-                for n in range(ny):
-                    left.insert(0,[2*n*nx+1])
-                    right.append([2*(nx*(n+1)-1)])
-
-                return {'bottom':bottom, 'top':top, 'right':right, 'left':left}
-            else: # dim = 1
-                # assemble boundary groups
-                return {'left':[[0]], 'right':[[self.n_elts()-1]]}
-        elif deg == 1:
-            return self._SuperMesh__boundary
-        else: # 2 or 3
-            return regular_mesh_bdata(self.__res, deg)
+        return max((self.__box[0][1] - self.__box[0][0])/float(self.__res[0]),\
+                   (self.__box[1][1] - self.__box[1][0])/float(self.__res[1]))
 
 #--------------------------------------------------------------------------------------#
 
-class RectangleMesh(RegularMesh):
-    """ rectangle mesh """
-    def __init__(self, x=[0,1], y=[0,1], nx=4, ny=4, diag='right'):
-        """
-        Input:
-            x,y - intervals defining bounding box
-            nx,ny - subdivisions in x and y directions
-        """
-        super(RectangleMesh, self).__init__(box=[x,y], res=[nx,ny], diag=diag)
+class TriangleMesh(Mesh):
+    """ triangle mesh for plotting shape functions """
+    def __init__(self, nx=4, ny=4):
+        
+        nx_vertex = nx+1; ny_vertex = ny+1          # number of vertex in x and y directions
+        n_vertex = nx_vertex*ny_vertex              # total number of vertex
+        n_elts = 2*nx*ny                            # total number of elements
 
-#--------------------------------------------------------------------------------------#
+        # assemble vertex_to_coords
+        # numbered from bottom left, then right, then one up start from left again 
+        xx = np.linspace(0,1,nx_vertex)
+        yy = np.linspace(0,1,ny_vertex)
+        vertex_to_coords = []
 
-class UnitSquareMesh(RegularMesh):
-    """ unit square mesh """
-    def __init__(self, nx=4, ny=4, diag='right'):
-        """
-        Input:
-            nx,ny - subdivisions in x and y directions
-            diag - left or right
-        """
-        super(UnitSquareMesh, self).__init__(box=[[0,1],[0,1]], res=[nx,ny], diag=diag)
+        # loop over vertexes
+        for iy in range(ny_vertex):
+            for ix in range(nx_vertex-iy):
+                vertex_to_coords.append([xx[ix], yy[iy]])
+        vertex_to_coords = np.array(vertex_to_coords, dtype=float)
+        #assert len(vertex_to_coords) == n_vertex, 'Assembly of vertex_to_coords failed.'
 
-#--------------------------------------------------------------------------------------#
+        # assemble elt_to_vertex
+        # numbering follows cell numbering (bottom left to right, one up, left to right etc.)
+        # lower elt in cell comes before upper elt
+        # anti-clockwise numbering of vertexes (start from bottom left)
+        elt_to_vertex = []
+
+        # loop over cells
+        for iy in range(ny):
+            for ix in range(nx-iy):
+                # vertexes of cell (ix,iy), from bottom left, anti-clockwise
+                v0 = sum([nx_vertex - iiy for iiy in range(iy)]) + ix 
+                v1 = v0+1
+                v2 = v0+nx_vertex-iy
+                v3 = v2+1
+
+                elt_to_vertex.append([v0, v1, v2])
+                if ix < nx - iy - 1:
+                    elt_to_vertex.append([v1, v3, v2])
+        
+        elt_to_vertex = np.array(elt_to_vertex, dtype=int)
+        #assert len(elt_to_vertex) == n_elts, 'Assembly of elt_to_vertex failed.'
+
+
+        super(TriangleMesh, self).__init__(np.array(vertex_to_coords), np.array(elt_to_vertex))
+
+#-------------------------------------------------------------------------------------#
 
 if __name__ == '__main__':
 
     # mesh
-    mesh = RectangleMesh(x=[0,10],y=[0,10],nx=10,ny=10)
-    vertex_to_coords, elt_to_vertex = mesh.get_lagrange_data(deg=3)
-    mesh.plot(dofs=vertex_to_coords)
+    mesh = RectangleMesh(nx=3,ny=3,diag='l')
+
+    
+    #print(mesh.vertex_to_coords())
+    #print(mesh.elt_to_vertex())
+    #print(mesh.elt_to_vcoords(0))
+    #print(mesh.elt_to_ccoords())
+
+
+    #mesh.plot()
+
+    mesh = TriangleMesh(nx=10,ny=10)
+
+
+    print(mesh.vertex_to_coords().shape)
+    #print(mesh.elt_to_vertex())
+    mesh.plot()
