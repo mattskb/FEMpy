@@ -169,18 +169,11 @@ class ShapeFunctions:
         return len(self.__phi)
 
 #--------------------------------------------------------------------------------------#
+#--------------------------------------------------------------------------------------#
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     """ Here we do some tests """
 
-    linsp = np.linspace(0,1,10)
-    x = np.array([linsp, linsp]).T
-    # x = np.array([1,2])
-    #eval_test(x)
-
-    deg = 1
-    plot_sfns(deg)
-    
     def eval_test(x):
         """ print output of the functions """
         print("Input: ", x)
@@ -207,6 +200,8 @@ if __name__ == '__main__':
         print("\nlagrange nodes, deg ", deg)
         lnodes = get_lagrange_nodes(deg)
         print(lnodes)
+
+#--------------------------------------------------------------------------------------#
 
     def plot_sfns(deg):
         """ plot the lagrange basis functions """
@@ -240,3 +235,13 @@ if __name__ == '__main__':
         mesh.plot(dof_to_coords=get_lagrange_nodes(deg), 
             title="Reference triangle with Lagrange nodes")
             
+#--------------------------------------------------------------------------------------#
+
+    linsp = np.linspace(0,1,10)
+    x = np.array([linsp, linsp]).T
+    # x = np.array([1,2])
+    eval_test(x)
+
+    deg = 1
+    #plot_sfns(deg)
+

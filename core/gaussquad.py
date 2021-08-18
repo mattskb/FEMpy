@@ -1,5 +1,5 @@
 
-def gaussPts(n, dim):
+def gaussPts(n, dim=2):
     """
     Provides the Gaussian points and weights
     for the Gaussian quadrature of order n for the reference element (1d or 2d)
@@ -253,6 +253,6 @@ if __name__ == "__main__":
     import numpy as np
     n = 3; dim = 1
     xw = np.array(gaussPts(n,dim))
-    print xw
+    print(xw)
 
 
