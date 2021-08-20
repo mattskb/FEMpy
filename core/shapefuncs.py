@@ -240,8 +240,12 @@ if __name__ == "__main__":
     linsp = np.linspace(0,1,10)
     x = np.array([linsp, linsp]).T
     # x = np.array([1,2])
-    eval_test(x)
+    #eval_test(x)
 
     deg = 1
     #plot_sfns(deg)
 
+    from meshing import TriangleMesh
+    mesh = TriangleMesh(1,1)
+    mesh.plot(dof_to_coords=get_lagrange_nodes(20), 
+        title="Reference triangle with Lagrange nodes")

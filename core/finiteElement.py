@@ -7,11 +7,12 @@ class Element:
     """ Finite Element class
     Input:
             deg - degree of piecewise polynomial (int)
-            gauss - degree of Gaussian quadrature
+            gauss - degree of Gaussian quadrature (int)
     """
     def __init__(self, deg, gauss):
         self.__deg = deg
         self.__sfns = ShapeFunctions(self.__deg)
+        self.__initialized = False
         self.__vertices = None 
         self.__dofs = None
         self.__jacobi_dets = None
@@ -30,6 +31,10 @@ class Element:
     def n_dofs(self):
         """ return number of dofs """
         return self.__sfns.n_dofs()
+
+    def initialized(self):
+        """ True if element vertices and DOFs are initialized """
+        return self.__initialized
 
     def n_quad(self):
         """ return number of quadrature points """
@@ -53,9 +58,9 @@ class Element:
         """Set data for element
         Input:
             vertices    - vertex coords of element
-            dofs        - DOF coords of elememt (must correspond to degree) 
+            dofs        - DOF coords of elememt, must correspond to degree (optional if degree equals 1)
         """
-        if dofs is None:
+        if dofs is None: 
             dofs = vertices
         assert dofs.shape == (self.n_dofs(),2), "DOFs incompatible with shape functions."
         assert vertices.shape == (3,2), "Invalid vertex data."
@@ -75,26 +80,28 @@ class Element:
             jacobis[:,1,1] += dphi_y*y
 
         self.__jacobi_dets = np.linalg.det(jacobis)
+        self.__initialized = True
+
+    def clear_data(self):
+        """ clear element data, i.e., vertices and DOFs """
+        self.__vertices = None
+        self.__dofs = None 
+        self.__jacobi_dets = None 
+        self.__initialized = False
 
     def vertices(self, n=None):
         """ return vertex coords or coord of vertex n """
-        if n is None:
+        if n is None or not self.initialized():
             return self.__vertices
         else:
-            try:
-                return self.__vertices[n,:]
-            except TypeError:
-                return None
+            return self.__vertices[n,:]
 
     def dofs(self, n=None):
         """ return DOF coords or coord of DOF n """
-        if n is None:
+        if n is None or not self.initialized():
             return self.__dofs
         else:
-            try:
-                return self.__dofs[n,:]
-            except TypeError:
-                return None
+            return self.__dofs[n,:]
 
     def jacobi_dets(self):
         """ return jacobi dets of transformation xi -> x at quad points """
@@ -102,17 +109,13 @@ class Element:
 
     def measure(self):
         """ returns measure (area) of element """
-        # calculate determinant of Jacobian of transformation xi -> x (ref to elt)
-        vertices = self.vertices()
-        tmp1 = vertices[1] - vertices[0]
-        tmp2 = vertices[2] - vertices[0]
-
-        a = np.array([tmp1, tmp2]).T
-        det = np.linalg.det(a)
-        return abs(det)/2
+        if self.initialized():
+            return np.linalg.det(np.concatenate((fe.vertices(),np.ones((3,1))),axis=1))/2
+        else:
+            return 0
 
     def eval(self, n, xi, derivative=False):
-        """ evaluate shape function n (or derivative) at ref coord xi
+        """Evaluate shape function n (or derivative) at ref coord xi
         Input:
             n   - n'th shape function to be evaluated
             xi  - local coord
@@ -123,7 +126,7 @@ class Element:
         """ maps ref coord xi to global coord x """
         x = np.sum([self.eval(j, xi)*self.dofs(j)[0] for j in range(self.n_dofs())], axis=0)
         y = np.sum([self.eval(j, xi)*self.dofs(j)[1] for j in range(self.n_dofs())], axis=0)
-        return np.array([x,y])
+        return np.array([x,y]).T
 
     def integrate(self, f):
         """ integrate (global) scalar function f over element
@@ -242,9 +245,15 @@ if __name__ == "__main__":
     deg = 1
     gauss = 2
     fe = Element(deg, gauss)
+    print(fe.vertices())
+
     
     vs = np.array([[0,0], [1,0], [0,1]])
     fe.set_data(vs)
+
+    print(fe.vertices())
+    print(np.concatenate((fe.vertices(),np.ones((3,1))),axis=1))
+    print(fe.measure())
     
     def test1():
         from meshing import RectangleMesh
@@ -259,6 +268,7 @@ if __name__ == "__main__":
             print("assemble mass:\n{}".format(fe.assemble(derivative=False)))
             print("assemble rhs: {}".format(fe.assemble_rhs(1)))
             print("map to elt:\n{}".format(fe.map_to_elt(np.ones((4,2)))))
+            print("map to elt:\n{}".format(fe.map_to_elt(np.array([0,0]))))
  
     test1()        
 

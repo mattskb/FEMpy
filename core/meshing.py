@@ -113,6 +113,69 @@ def regular_mesh_data(box, res, diag):
 
 #--------------------------------------------------------------------------------------#
 
+def regular_mesh_dofs(box, res, deg, diag):
+    """Lagrange DOF data for regular triangular mesh
+    Input:
+        box                 - bounding box ([start_x,end_x],[start_y,end_y])
+        res                 - number of divisions of x and y (nx,ny)
+        deg                 - degree of Lagrange DOFs
+        diag                - diagonal to the left or right 
+    Output:
+        def_to_coords       - vertex number to coordinates
+        elt_to_dofs         - element number to vertex numbers 
+    """
+    # check valid data
+    assert len(box) == len(res), 'Incompatible box and res arguments.'
+    if len(box)!= 2:
+        raise ValueError('Invalid box and res arguments.')
+
+    # check valid diagonal arg
+    diag = diag.lower()
+    assert diag in {'left','l','right','r'}, 'Invalid diagonal argument.'
+    
+    x = box[0]; y = box[1]                      # bounding box
+    nx = res[0]; ny = res[1]                    # number of cells in each direction (2 elts per cell)
+    nx_dofs = deg*nx+1; ny_dofs = deg*ny+1      # number of vertex in x and y directions
+    n_dofs = nx_dofs*ny_dofs                    # total number of vertex
+    n_elts = 2*nx*ny                            # total number of elements
+
+    # assemble dof_to_coords
+    # numbered from bottom left, then right, then one up start from left again 
+    xx = np.linspace(x[0],x[1],nx_dofs)
+    yy = np.linspace(y[0],y[1],ny_dofs)
+    dof_to_coords = []
+
+    # loop over dofs
+    for iy in range(ny_dofs):
+        for ix in range(nx_dofs):
+            dof_to_coords.append([xx[ix], yy[iy]])
+    assert len(dof_to_coords) == n_dofs, 'Assembly of vertex_to_coords failed.'
+
+    # assemble elt_to_dofs
+    # numbering follows cell numbering (bottom left to right, one up, left to right etc.)
+    # lower elt in cell comes before upper elt
+    # anti-clockwise numbering of vertexes (start from bottom left)
+    elt_to_dofs = []
+
+    # loop over cells
+    for iy in range(ny):
+        for ix in range(nx):
+            # dofs in current cell as matrix
+            dofs_in_cell = np.array([[nx_dofs*(deg*iy + i) + deg*ix + j \
+                                        for j in range(deg+1)] for i in range(deg,-1,-1)])
+
+            # extract dofs in the upper and lower element
+            if diag in {"right","r"}: 
+                dofs_in_cell = np.fliplr(dofs_in_cell)
+
+            elt_to_dofs.append(dofs_in_cell[np.tril_indices(deg+1)])
+            elt_to_dofs.append(dofs_in_cell[np.triu_indices(deg+1)])
+    assert len(elt_to_dofs) == n_elts, 'Assembly of elt_to_vertex failed.'
+
+    return np.array(dof_to_coords, dtype=float), np.array(elt_to_dofs, dtype=int)
+
+#--------------------------------------------------------------------------------------#
+
 class Mesh:
     """Triangular mesh """
     def __init__(self, vertex_to_coords, elt_to_vertex):
@@ -252,8 +315,12 @@ class TriangleMesh(Mesh):
 if __name__ == '__main__':
 
     # mesh
-    mesh = RectangleMesh(nx=3,ny=3,diag='l')
-
+    nx = 1; ny = 1; diag = "l"; deg = 10
+    mesh = RectangleMesh(nx=nx,ny=ny,diag=diag)
+    dof_to_coords, elt_to_dofs = regular_mesh_dofs(([1,0],[1,0]), (nx,ny), deg, diag)
+    print(elt_to_dofs)
+    mesh.plot(dof_to_coords=dof_to_coords)
+    
     
     #print(mesh.vertex_to_coords())
     #print(mesh.elt_to_vertex())
@@ -266,6 +333,8 @@ if __name__ == '__main__':
     mesh = TriangleMesh(nx=10,ny=10)
 
 
-    print(mesh.vertex_to_coords().shape)
+    #print(mesh.vertex_to_coords().shape)
     #print(mesh.elt_to_vertex())
-    mesh.plot()
+    #mesh.plot()
+
+    #dof_to_coords, elt_to_dofs = regular_mesh_dofs(([1,0],[1,0]), (2,2), 2, "right")
