@@ -140,27 +140,6 @@ class Element:
             return sum(integrand*self.jacobi_dets()*self.quad_weights())
         else:
             return f*self.measure()
-
-
-    def assemble_stress(self, d1=0, d2=0, c=None):
-        """ Assemble parts of stress tensor (for element), i.e. (partial_x phi_i, partial_y phi_j)
-        *only call this for P1 elements in 2D*
-        Input:
-            d1 - partial deriv for row index (0 for x, 1 for y)
-            d2 - partial deriv for column index (0 for x, 1 for y)
-        """
-        v0, v1, v2 = self.__vertices
-
-        # rows are gradients of phi
-        phis = np.array([[ v1[1] - v2[1], v2[0] - v1[0] ],\
-                         [ v2[1] - v0[1], v0[0] - v2[0] ],\
-                         [ v0[1] - v1[1], v1[0] - v0[0] ]])
-
-        A = np.tensordot(phis[:,d1], phis[:,d2], 0)
-        if c is None:
-            return A/(4*self.measure())
-        else:
-            return A*self.integrate(c)/(self.__det**2)
                 
     def assemble(self, c=None, derivative=True):
         """Assembles local stiffness (default) or mass matrix 
@@ -175,7 +154,6 @@ class Element:
         for i in range(n):
             for j in range(n):
                 A[i,j] = self.integrate_phi_phi(i, j, c=c, derivative=derivative)
-
         return A
 
     def assemble_rhs(self, f):

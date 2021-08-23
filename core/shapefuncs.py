@@ -149,7 +149,7 @@ class ShapeFunctions:
         """
 
         # check valid dimentions and degree
-        assert isinstance(deg, int) and (1 <= deg <= 3), 'Invalid degree for Lagrange shape functions.'
+        assert isinstance(deg, int) and (1 <= deg <= 10), 'Invalid degree for Lagrange shape functions.'
 
         # get shape functions
         phi, dphi = get_lagrange_basis(deg)
@@ -232,8 +232,12 @@ if __name__ == "__main__":
             ax.set_title("Degree {} Lagrange basis function {}/{}.".format(deg, j+1, n_dofs))
             
         # plot the DOFs
+        #mesh.plot(dof_to_coords=get_lagrange_nodes(deg), 
+        #    title="Reference triangle with Lagrange nodes")
+
+        mesh = TriangleMesh(1,1)
         mesh.plot(dof_to_coords=get_lagrange_nodes(deg), 
-            title="Reference triangle with Lagrange nodes")
+            title="Reference triangle with Lagrange nodes", grid=True)
             
 #--------------------------------------------------------------------------------------#
 
@@ -243,9 +247,4 @@ if __name__ == "__main__":
     #eval_test(x)
 
     deg = 1
-    #plot_sfns(deg)
-
-    from meshing import TriangleMesh
-    mesh = TriangleMesh(1,1)
-    mesh.plot(dof_to_coords=get_lagrange_nodes(20), 
-        title="Reference triangle with Lagrange nodes")
+    plot_sfns(deg)
