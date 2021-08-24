@@ -131,6 +131,7 @@ class Mesh:
         self.__vertex_to_coords = vertex_to_coords
         self.__elt_to_vertex = elt_to_vertex
         self.__dof_data = {}
+        self.__boundary_data = {}
 
     def n_elts(self):
         """ return number of elements in mesh """
@@ -166,10 +167,29 @@ class Mesh:
         else:
             return self.__vertex_to_coords[self.__elt_to_vertex[n,:]]
 
+    def elt_to_ccoords(self, n=None):
+        """ return element number to center coords or center coord of element n """
+        if n is None:
+            return np.sum(self.elt_to_vcoords(),axis=1)/3  
+        else:
+            return np.sum(self.elt_to_vcoords(n),axis=0)/3
+
     def set_dof_data(self, **dof_data):
         """ set DOF data given by keyword arguments """
         for k in dof_data.keys():
             self.__dof_data[k] = dof_data[k]
+
+    def dof_data(self):
+        """ print dof data and return list of keys"""
+        if self.__dof_data:
+            print("DOF data:")
+            template = "\t{0:15}{1:20}"
+            print(template.format("[name]","[shape]"))
+            for k in self.__dof_data.keys():
+                print(template.format(k, str(self.__dof_data[k].shape)))
+            return self.__dof_data.keys()
+        else: 
+            print("No additional DOF data specified.")
 
     def n_dofs(self):
         """ get total number of DOFs in mesh """
@@ -200,24 +220,45 @@ class Mesh:
 
     def elt_to_dofcoords(self, n=None):
         """return element number to DOF coords, or DOF coords of element n 
-        i.,e, n_eltsxn_dofs_eltx2 or n_elt_dofsx2 array """
+        i.e., n_eltsxn_dofs_eltx2 or n_elt_dofsx2 array """
         if n is None:
             return self.dof_to_coords()[self.elt_to_dofs()]
         else:
             return self.dof_to_coords()[self.elt_to_dofs(n)]
 
-    def elt_to_ccoords(self, n=None):
-        """ return element number to center coords or center coord of element n """
-        if n is None:
-            return np.sum(self.elt_to_vcoords(),axis=1)/3  
+    def set_boundary_data(self, **boundary_data):
+        """ Set boundary data given by keyword arguments """
+        for k in boundary_data.keys():
+            self.__boundary_data[k] = boundary_data[k]
+
+    def boundary_groups(self):
+        """ print boundary groups """
+        if self.__boundary_data:
+            print("Boundary edge-to-dofnumber groups:")
+            template = "\t{0:10}{1:20}"
+            print(template.format("[name]","[shape]"))
+            for k in self.__boundary_data.keys():
+                print(template.format(k, str(self.__boundary_data[k].shape)))
+            return self.__boundary_data.keys()
         else:
-            return np.sum(self.elt_to_vcoords(n),axis=0)/3
-            
+            print("No boundary data specified.")
+
+    def bedge_to_dofs(self, *group):
+        """ Get all boundary edges to DOF numbers or only for group(s) specified by names """
+        if len(group) == 0:
+            return np.concatenate(tuple(self.__boundary_data.values()))
+        else:
+            return np.concatenate(tuple([self.__boundary_data[g] for g in group]))
+        
     def plot(self, dof_to_coords=None, title=None, figsize=(10,10), grid=False, savefig=None):
         """ plot mesh
         DOFs given by dofs can be shown in figure
         file - name of .pdf file if figure is saved
         """
+        if dof_to_coords in {1, True}:
+            dof_to_coords = self.dof_to_coords()
+        elif dof_to_coords in {0, False}:
+            dof_to_coords = None
         plot_mesh(self.vertex_to_coords(), self.elt_to_vertex(), dof_to_coords,
             title, figsize, grid, savefig)
 
@@ -232,14 +273,20 @@ class RectangleMesh(Mesh):
             diag            - left or right 
     """
     def __init__(self, x=[0,1], y=[0,1], nx=4, ny=4, deg=1, diag='right'):
-        vertex_to_coords, elt_to_vertex = regular_mesh_data((x, y), (nx, ny), 1, diag)
+        vertex_to_coords, elt_to_vertex, boundary = regular_mesh_data((x, y), (nx, ny), 1, diag)
         super(RectangleMesh, self).__init__(vertex_to_coords, elt_to_vertex)
 
         if 1 < deg <= 10: 
-            dof_to_coords, elt_to_dofs = regular_mesh_data((x, y), (nx, ny), deg, diag)
-            self.set_dof_data(dof_to_coords=dof_to_coords, elt_to_dofs=elt_to_dofs)
+            dof_to_coords, elt_to_dofs, boundary = regular_mesh_data((x, y), (nx, ny), deg, diag)
+            self.set_dof_data(dof_to_coords=dof_to_coords, 
+                              elt_to_dofs=elt_to_dofs)
         elif deg > 10:
             raise ValueError("Illegal value for degree (must be in range [1,10]).")
+
+        self.set_boundary_data(top=boundary["top"],
+                               bottom=boundary["bottom"],
+                               left=boundary["left"],
+                               right=boundary["right"])
 
         self.__box = (x, y)
         self.__res = (nx, ny)
@@ -267,35 +314,48 @@ class TriangleMesh(Mesh):
 #-------------------------------------------------------------------------------------#
 
 if __name__ == '__main__':
+    """ Here we do some tests """
 
-    mesh = RectangleMesh()
+    def rectangle_mesh_test(nx=3, ny=3, diag="r", deg=2):
+        print("Test methods for Rectangle mesh (unit square) with params:\
+            \n\tres: {}, diag: {}, deg: {}\n".format((nx,ny), diag, deg))
 
-    print(mesh.dof_to_coords(0))
-    print(mesh.elt_to_dofcoords(0))
-    print(mesh.elt_to_vcoords(0))
-
-    def mesh_test():
-        # mesh
-        nx = 1; ny = 1; diag = "l"; deg = 10
+        print("\nBasic stuff -------------------------")
         mesh = RectangleMesh(nx=nx,ny=ny,deg=deg,diag=diag)
-        dof_to_coords, elt_to_dofs = regular_mesh_data(([1,0],[1,0]), (nx,ny), deg, diag)
-        print(elt_to_dofs)
-        mesh.plot(dof_to_coords=dof_to_coords)
-        
-        
-        #print(mesh.vertex_to_coords())
-        #print(mesh.elt_to_vertex())
-        #print(mesh.elt_to_vcoords(0))
-        #print(mesh.elt_to_ccoords())
+        print("- n elts: ", mesh.n_elts())
+        print("- n vertices: ", mesh.n_vertices())
+        print("- n edges: ", mesh.n_edges())
+        print("- vertex_to_coords:", mesh.vertex_to_coords().shape,
+            "\n  vertex 0:", mesh.vertex_to_coords(0))
+        print("- elt_to_vertex:", mesh.elt_to_vertex().shape,
+            "\n  elt 0:", mesh.elt_to_vertex(0))
+        print("- elt_to_vcoords:", mesh.elt_to_vcoords().shape,
+            "\n  elt 0:", np.array2string(mesh.elt_to_vcoords(0), prefix="  elt 0: "))
+        print("- elt_to_ccoords:", mesh.elt_to_ccoords().shape,
+            "\n  elt 0:", mesh.elt_to_ccoords(0))
+
+        print("\nDOF stuff --------------------------")
+        print("- dof data:", mesh.dof_data())
+        print("- n dofs:", mesh.n_dofs())
+        print("- dof_to_coords:", mesh.dof_to_coords().shape,
+            "\n  elt 0:", mesh.dof_to_coords(0))
+        print("- elt_to_dofs:", mesh.elt_to_dofs().shape,
+            "\n  elt 0:", mesh.elt_to_dofs(0))
+        print("- elt_to_dofcoords:", mesh.elt_to_dofcoords().shape,
+            "\n  elt 0:", np.array2string(mesh.elt_to_dofcoords(0), prefix="  elt 0: "))
+
+        print("\nBoundary stuff --------------------")
+        print("- boundary groups:", mesh.boundary_groups())
+        print("- bedge_to_dofs: (all)", mesh.bedge_to_dofs().shape)
+        print("- bedge_to_dofs: (some)", mesh.bedge_to_dofs("top","left").shape)
 
 
-        #mesh.plot()
-
-        mesh = TriangleMesh(nx=10,ny=10)
-        mesh = RectangleMesh
+        mesh.plot(dof_to_coords=True)
 
         #print(mesh.vertex_to_coords().shape)
         #print(mesh.elt_to_vertex())
         #mesh.plot()
 
         #dof_to_coords, elt_to_dofs = regular_mesh_dofs(([1,0],[1,0]), (2,2), 2, "right")
+
+    rectangle_mesh_test()

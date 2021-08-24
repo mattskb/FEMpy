@@ -28,6 +28,7 @@ def regular_mesh_data(box, res, deg, diag):
     nx_dofs = deg*nx+1; ny_dofs = deg*ny+1      # number of vertex in x and y directions
     n_dofs = nx_dofs*ny_dofs                    # total number of vertex
     n_elts = 2*nx*ny                            # total number of elements
+    n_boundary_edges = 2*nx + 2*ny              # total number of boundary edges
 
 	# assemble node_to_coords
 	# numbered from bottom left, then right, then one up start from left again 
@@ -47,6 +48,9 @@ def regular_mesh_data(box, res, deg, diag):
     # anti-clockwise numbering of vertexes (start from bottom left)
     elt_to_nodes = []
 
+    # boundary edge to node numbers (divided in four groups corresponding to sides of rectangle)
+    bottom = []; top = []; right = []; left = []
+
     # loop over cells
     for iy in range(ny):
         for ix in range(nx):
@@ -56,13 +60,32 @@ def regular_mesh_data(box, res, deg, diag):
 
             # extract dofs in the upper and lower element
             if diag in {"right","r"}: 
+                # når diag=r så er øverste element riktig fortegn
                 dofs_in_cell = np.fliplr(dofs_in_cell)
+                #elt_to_nodes.append(np.flip(dofs_in_cell[np.tril_indices(deg+1)])) #<---fiks
+                #elt_to_nodes.append(dofs_in_cell[np.triu_indices(deg+1)])
+            else:
+                # når diag=l så er nederste element riktig fortegn
+                elt_to_nodes.append(dofs_in_cell[np.tril_indices(deg+1)])
+                
+                elt_to_nodes.append(np.flip(dofs_in_cell[np.triu_indices(deg+1)])) #<---fiks
 
             elt_to_nodes.append(dofs_in_cell[np.tril_indices(deg+1)])
             elt_to_nodes.append(dofs_in_cell[np.triu_indices(deg+1)])
-    assert len(elt_to_nodes) == n_elts, 'Assembly of elt_to_vertex failed.'
 
-    return np.array(node_to_coords, dtype=float), np.array(elt_to_nodes, dtype=int)
+            if iy == 0: bottom.append(dofs_in_cell[-1,:])
+            if ix == 0: left.append(dofs_in_cell[:,0])
+            if iy == ny-1: top.append(dofs_in_cell[0,:])
+            if ix == nx-1: right.append(dofs_in_cell[:,-1])
+
+    assert len(elt_to_nodes) == n_elts, "Assembly of elt_to_vertex failed."
+    assert len(bottom+left+top+right) == n_boundary_edges, "Assembly of boundary failed."
+    boundary = {"bottom": np.array(bottom),
+                "left":   np.array(left),
+                "top":    np.array(top),
+                "right":  np.array(right)}
+
+    return np.array(node_to_coords, dtype=float), np.array(elt_to_nodes, dtype=int), boundary
 
 
 def triangle_mesh_data(nx, ny):

@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
     def eval_test(x):
         """ print output of the functions """
-        print("Input: ", x)
+        print("Input: ", np.array2string(x, prefix="Input:  "))
 
         print("\npsi eval test")
         psi = get_psi([1,1])
@@ -194,7 +194,7 @@ if __name__ == "__main__":
         print(phi(x))
 
         print("\ndphi test")
-        dphi = get_dphi(0, coeffs, dpsi, n_nodes)
+        dphi = get_dphi(2, coeffs, dpsi, n_nodes)
         print(dphi(x))
 
         print("\nlagrange nodes, deg ", deg)
@@ -241,10 +241,30 @@ if __name__ == "__main__":
             
 #--------------------------------------------------------------------------------------#
 
+    def sf_test(deg, x):
+        """ print output of the functions """
+        print("Input: ", np.array2string(x, prefix="Input:  "))
+        sf = ShapeFunctions(deg)
+        print("Evals: ===========================")
+        for j in range(sf.n_dofs()):
+            print("SF ", j)
+            print(sf.eval(j, x))
+
+        print("Grad evals: ======================")
+        for j in range(sf.n_dofs()):
+            print("SF ", j)
+            print(sf.eval(j, x, derivative=True))
+
+
+#--------------------------------------------------------------------------------------#
     linsp = np.linspace(0,1,10)
     x = np.array([linsp, linsp]).T
     # x = np.array([1,2])
     #eval_test(x)
 
     deg = 1
-    plot_sfns(deg)
+    #plot_sfns(deg)
+
+    #x = np.array([0,1])
+    #sf_test(2, x)
+

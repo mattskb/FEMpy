@@ -42,9 +42,12 @@ class Space:
         for j in range(self.__mesh.n_elts()):
             # local assemble for element j
             self.__fe.set_data(self.__mesh.elt_to_vcoords(j),\
-             self.__mesh.elt_to_dofcoords(j))                          # give element data to FE
+            self.__mesh.elt_to_dofcoords(j))                          # give element data to FE
             elt_assemble = self.__fe.assemble(c, derivative)          # element assembly
-
+            #print(elt_assemble)
+            #from numpy.linalg import cond
+            #print(cond(elt_assemble))
+            #print("========================================")
             local_dofs = np.array([self.__mesh.elt_to_dofs(j)])       # indices
             A[local_dofs.T, local_dofs] += elt_assemble               # add to global assembly
 
@@ -92,11 +95,59 @@ if __name__ == '__main__':
 
 
     deg = 1
-    mesh = RectangleMesh(nx=2,ny=2)
+    mesh = RectangleMesh(nx=1,ny=1,diag="l")
     fs = Space(mesh, deg)
-    A = fs.stiffness()
+    A = fs.stiffness(cond=True)
     #print(A)
     #print("no of dofs: ", fs.n_dofs())
+
+    def dirichlet_ex(n=16, deg=1, gauss=4, diag='right', plot=True):
+        """ Poisson w/ homogenous Dirichlet bc in 2D
+        """
+        from scipy.sparse import issparse, csc_matrix, csr_matrix, dia_matrix
+        import scipy.sparse.linalg as spla
+        import matplotlib.pyplot as plt
+
+        print("\nDirichlet in 2D")
+        # data
+        mesh = RectangleMesh(nx=n,ny=n,deg=1,diag=diag)
+
+        f = lambda x: 32.*(x[:,1]*(1.-x[:,1]) + x[:,0]*(1.-x[:,0]))
+        u_ex = lambda x: 16.*x[:,0]*(1.-x[:,0])*x[:,1]*(1.-x[:,1])
+
+        # assemble
+        fs = Space(mesh, deg, gauss=gauss)
+        A = fs.stiffness(cond=True)
+        rhs = fs.rhs(f)
+
+        # solution vector
+        u = np.zeros(fs.n_dofs())
+
+        bedge_to_dofs = mesh.bedge_to_dofs()
+        enforced_dof_nos = np.unique(np.ravel(bedge_to_dofs))
+
+        free_dofs = np.setdiff1d(range(fs.n_dofs()), enforced_dof_nos)   
+        n_free_dofs = len(free_dofs)   
+
+        # modify linear system and solve
+        A_free = A[free_dofs.reshape(n_free_dofs, 1), free_dofs]
+        rhs = rhs - csc_matrix(A).dot(u)
+
+        u[free_dofs] = spla.spsolve(csr_matrix(A_free), rhs[free_dofs])
+
+        # plot solution
+        X,Y = mesh.dof_to_coords().T
+
+        if plot:
+            fig, (ax1, ax2) = plt.subplots(1,2) #figsize=(10,10),num=j+1
+            cont1 = ax1.tricontourf(X, Y, u, 100)            
+            plt.colorbar(cont1)
+
+            cont2 = ax2.tricontourf(X, Y, u_ex(mesh.dof_to_coords()), 100)            
+            plt.colorbar(cont2)
+            plt.show()
+
+    dirichlet_ex(n=32)
 
     def neuman_ex(n=16, deg=1, gauss=4, diag='right'):
         """ Poisson w/ homogenous Neuman bc in 2D
@@ -130,7 +181,7 @@ if __name__ == '__main__':
         cont = ax.tricontourf(X, Y, u, 100)            
         plt.colorbar(cont)
 
-    neuman_ex()
+    #neuman_ex()
 #--------------------------------------------------------------------------------------#
 
     def p0_test():

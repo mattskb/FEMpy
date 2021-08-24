@@ -68,7 +68,7 @@ class Element:
         self.__vertices = vertices
         self.__dofs = dofs
 
-        # set Jacobi determinant of transformation xi -> x, i.e. dxi/dx at quad points 
+        # set Jacobi determinant of transformation xi -> x, i.e. dx/dxi at quad points 
         jacobis = np.zeros((self.n_quad(),2,2))
         
         for j in range(self.n_dofs()):
@@ -110,7 +110,7 @@ class Element:
     def measure(self):
         """ returns measure (area) of element """
         if self.initialized():
-            return np.linalg.det(np.concatenate((fe.vertices(),np.ones((3,1))),axis=1))/2
+            return np.linalg.det(np.concatenate((self.vertices(),np.ones((3,1))),axis=1))/2
         else:
             return 0
 
@@ -218,21 +218,7 @@ class Element:
 
 if __name__ == "__main__":
     """ Here we do some tests """
-    
-
-    deg = 1
-    gauss = 2
-    fe = Element(deg, gauss)
-    print(fe.vertices())
-
-    
-    vs = np.array([[0,0], [1,0], [0,1]])
-    fe.set_data(vs)
-
-    print(fe.vertices())
-    print(np.concatenate((fe.vertices(),np.ones((3,1))),axis=1))
-    print(fe.measure())
-    
+        
     def test1():
         from meshing import RectangleMesh
         mesh = RectangleMesh(nx=3,ny=3)
@@ -247,9 +233,48 @@ if __name__ == "__main__":
             print("assemble rhs: {}".format(fe.assemble_rhs(1)))
             print("map to elt:\n{}".format(fe.map_to_elt(np.ones((4,2)))))
             print("map to elt:\n{}".format(fe.map_to_elt(np.array([0,0]))))
- 
-    test1()        
 
+    def map_test():
+        from meshing import RectangleMesh
+        mesh = RectangleMesh(nx=3,ny=3)
+        ref_vertices = np.array([[0,0],[1,0],[0,1]])
+        fe = Element(1,4)
+        vertices = mesh.elt_to_vcoords()
+        j = 0
+        for v in vertices:
+            fe.set_data(v)
+            mp = fe.map_to_elt(ref_vertices)
+            print("============================\n")
+            print(fe.vertices() - mp)
+            print(fe.map_to_elt(np.array([1/3,1/3])) - mesh.elt_to_ccoords(j))
+            j += 1
+
+    def integral_test(deg=1):
+        from meshing import RectangleMesh
+        mesh = RectangleMesh(nx=1,ny=1,deg=deg,diag="l")
+        #f = lambda x: np.ones(x.shape[0])
+        #f = lambda x: np.sum(x,1)
+        f = lambda x: np.prod(x,1)
+
+        fe = Element(deg,4)
+        vertices = mesh.elt_to_vcoords()
+        dofs = mesh.elt_to_dofcoords()
+        for v,d in zip(vertices, dofs):
+            fe.set_data(v,d)
+            print(fe.integrate(f))
+            print(fe.measure())
+            #print(v)
+            print("===================\n")
+
+    #test1()       
+    #map_test() 
+    integral_test(1)
+
+"""
+når diag=r så er øverste element riktig fortegn
+
+når diag=l så er nederste element riktig fortegn
+"""
 
 
 
