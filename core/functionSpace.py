@@ -80,7 +80,8 @@ class Space:
                 self.__fe.set_data(self.__mesh.elt_to_vcoords(j),\
                     self.__mesh.elt_to_dofcoords(j))                          # give element data to FE
 
-                local_dofs = np.array([self.__mesh.elt_to_dofs(j)])
+                #local_dofs = np.array([self.__mesh.elt_to_dofs(j)])
+                local_dofs = self.__mesh.elt_to_dofs(j)
                 #print(np.array([self.__mesh.elt_to_vertices(j)]))
                 #print(self.__fe.assemble_rhs(f))
 
@@ -94,10 +95,10 @@ if __name__ == '__main__':
     from meshing import RectangleMesh
 
 
-    deg = 1
-    mesh = RectangleMesh(nx=1,ny=1,diag="l")
-    fs = Space(mesh, deg)
-    A = fs.stiffness(cond=True)
+    #deg = 1
+    #mesh = RectangleMesh(nx=1,ny=1,diag="l")
+    #fs = Space(mesh, deg)
+    #A = fs.stiffness(cond=True)
     #print(A)
     #print("no of dofs: ", fs.n_dofs())
 
@@ -112,12 +113,12 @@ if __name__ == '__main__':
         # data
         mesh = RectangleMesh(nx=n,ny=n,deg=1,diag=diag)
 
-        f = lambda x: 32.*(x[:,1]*(1.-x[:,1]) + x[:,0]*(1.-x[:,0]))
+        f = lambda x: 32.*(x[:,1]*(x[:,1]-1.) + x[:,0]*(x[:,0]-1.))
         u_ex = lambda x: 16.*x[:,0]*(1.-x[:,0])*x[:,1]*(1.-x[:,1])
 
         # assemble
         fs = Space(mesh, deg, gauss=gauss)
-        A = fs.stiffness(cond=True)
+        A = fs.stiffness(cond=False)
         rhs = fs.rhs(f)
 
         # solution vector
@@ -139,12 +140,20 @@ if __name__ == '__main__':
         X,Y = mesh.dof_to_coords().T
 
         if plot:
-            fig, (ax1, ax2) = plt.subplots(1,2) #figsize=(10,10),num=j+1
-            cont1 = ax1.tricontourf(X, Y, u, 100)            
-            plt.colorbar(cont1)
+            #tri = Triangulation(X, Y, elt_to_vertex)
+            fig = plt.figure(figsize=plt.figaspect(0.5))
 
-            cont2 = ax2.tricontourf(X, Y, u_ex(mesh.dof_to_coords()), 100)            
-            plt.colorbar(cont2)
+            ax = fig.add_subplot(1, 2, 1, projection='3d')
+            ax.plot_trisurf(X, Y, u, cmap=plt.cm.Spectral) #triangles=tri.triangles, cmap=plt.cm.Spectral)
+            ax.set_title("Numerical")
+            ax.set_zlim(0, 1)
+
+            ax = fig.add_subplot(1, 2, 2, projection='3d')
+            ax.plot_trisurf(X, Y, u_ex(mesh.dof_to_coords()), cmap=plt.cm.Spectral)
+            ax.set_title("Exact")
+            ax.set_zlim(0, 1)
+            
+
             plt.show()
 
     dirichlet_ex(n=32)

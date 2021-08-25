@@ -73,7 +73,7 @@ def get_lagrange_nodes(deg):
         [x,y] coordinates of nodes
     """
     pts = np.linspace(0,1,deg+1)
-    return np.array([[xi,yi] for yi in pts for xi in pts if xi+yi<=1])
+    return np.array([[xi,yi] for yi in np.flip(pts) for xi in pts if xi+yi<=1])
 
 
 #--------------------------------------------------------------------------------------#
@@ -267,4 +267,6 @@ if __name__ == "__main__":
 
     #x = np.array([0,1])
     #sf_test(2, x)
+
+    print(get_lagrange_nodes(2))
 

@@ -21,7 +21,7 @@ class Element:
         xw = np.array(gaussPts(gauss, dim=2))
 
         self.__n_quad = xw.shape[0]             # number of quad points
-        self.__quad_weights = xw[:,2]           # quad weights
+        self.__quad_weights = xw[:,2]/2         # quad weights
         self.__quad_points = xw[:,:2]           # quad points
 
     def deg(self):
@@ -78,8 +78,10 @@ class Element:
             jacobis[:,0,1] += dphi_y*x
             jacobis[:,1,0] += dphi_x*y
             jacobis[:,1,1] += dphi_y*y
-
+            #print(jacobis); print("------------------------------")    
+            #print(self.eval(j, self.quad_points(), derivative=True)); print("------------------------------")    
         self.__jacobi_dets = np.linalg.det(jacobis)
+        self.__ijacobis = np.linalg.inv(jacobis)
         self.__initialized = True
 
     def clear_data(self):
@@ -104,7 +106,8 @@ class Element:
             return self.__dofs[n,:]
 
     def jacobi_dets(self):
-        """ return jacobi dets of transformation xi -> x at quad points """
+        """ return jacobi dets of transformation xi -> x at quad points 
+        with P1 basis det = 2*measure """
         return self.__jacobi_dets
 
     def measure(self):
@@ -141,6 +144,19 @@ class Element:
         else:
             return f*self.measure()
                 
+    #def assemble(self, c=None, derivative=True):
+    def assemble_P1_stiffness(self):
+        """ shortcut method for assembling stiffness matrix for P1 elemenets """
+        v1,v2,v3 = self.vertices()
+        x1, y1 = v1
+        x2, y2 = v2
+        x3, y3 = v3
+        D = np.array([[x3-x2, x1-x3, x2-x1],[y3-y2, y1-y3, y2-y1]])
+        return np.dot(D.T,D)/(4*self.measure())
+
+        #E = self.__vertices[[1, 2, 0],:] - self.__vertices[[2, 0, 1],:]
+        #return np.dot(E,E.T)/(4*self.measure())
+
     def assemble(self, c=None, derivative=True):
         """Assembles local stiffness (default) or mass matrix 
         Input:
@@ -173,10 +189,22 @@ class Element:
         """Integrate product of shape functions i and j product over element """
 
         if derivative:
-            ix, iy = self.eval(i, self.quad_points(), derivative).T
-            jx, jy = self.eval(j, self.quad_points(), derivative).T
+            #ix, iy = self.eval(i, self.quad_points(), derivative).T
+            #jx, jy = self.eval(j, self.quad_points(), derivative).T
+            gradi = self.eval(i, self.quad_points(), derivative)
+            gradj = self.eval(j, self.quad_points(), derivative)
             if c is None:
-                integrand = ix*jx + iy*jy
+                #integrand = ix*jx + iy*jy; 
+                integrand = np.zeros(self.n_quad())
+                inv_jaco = self.__ijacobis
+                for k in range(self.n_quad()):
+                    tempi = np.dot(gradi[k,:], inv_jaco[k,:,:])
+                    tempj = np.dot(gradj[k,:], inv_jaco[k,:,:])
+                    integrand[k] = np.dot(tempi,tempj)
+
+                #print(ix);print(iy);print(jx);print(jy)
+                #print(integrand)
+                
             else:
                 if callable(c): # <============================ variable coefficient
                     c_eval = c(self.quad_points())
@@ -191,6 +219,7 @@ class Element:
                                   + c[2,1]*iy*jx + c[2,2]*iy*jx
                     else: # <---------------------------------- scalar 
                         integrand = c*(ix*jx + iy*jy)
+            #integrand *= self.__ijacobi_dets**2
         else:
             phi_i = self.eval(i, self.quad_points(), derivative)
             phi_j = self.eval(j, self.quad_points(), derivative)
@@ -201,8 +230,12 @@ class Element:
                     integrand = phi_i*phi_j*c(self.quad_points())
                 else:
                     integrand = c*phi_i*phi_j
-
-        return sum(integrand*self.jacobi_dets()*self.quad_weights())
+        #print(self.jacobi_dets())
+        #print(self.measure())
+        #print(self.quad_weights())
+        #print(integrand*self.jacobi_dets()*self.quad_weights())
+        #print("========================================")
+        return sum(integrand*self.jacobi_dets()*self.quad_weights())#/(2*self.measure())
                     
     def integrate_phi_f(self, i, f):
         """Integrate product of shape function i and function f """
@@ -221,7 +254,8 @@ if __name__ == "__main__":
         
     def test1():
         from meshing import RectangleMesh
-        mesh = RectangleMesh(nx=3,ny=3)
+        mesh = RectangleMesh(nx=1,ny=1)
+        fe = Element(1,4)
         for j in range(mesh.n_elts()):
             vs = mesh.elt_to_vcoords(j)
             fe.set_data(vs)
@@ -231,50 +265,70 @@ if __name__ == "__main__":
             print("assemble stiffness:\n{}".format(fe.assemble()))
             print("assemble mass:\n{}".format(fe.assemble(derivative=False)))
             print("assemble rhs: {}".format(fe.assemble_rhs(1)))
-            print("map to elt:\n{}".format(fe.map_to_elt(np.ones((4,2)))))
-            print("map to elt:\n{}".format(fe.map_to_elt(np.array([0,0]))))
+            #print("map to elt:\n{}".format(fe.map_to_elt(np.ones((4,2)))))
+            #print("map to elt:\n{}".format(fe.map_to_elt(np.array([0,0]))))
 
     def map_test():
         from meshing import RectangleMesh
-        mesh = RectangleMesh(nx=3,ny=3)
-        ref_vertices = np.array([[0,0],[1,0],[0,1]])
-        fe = Element(1,4)
-        vertices = mesh.elt_to_vcoords()
+        mesh = RectangleMesh(nx=3,ny=3,deg=2)
+        ref_vertices = np.array([[0,1],[0,0],[1,0]])
+        fe = Element(2,4)
+        vertices = mesh.elt_to_vcoords(); dofs = mesh.elt_to_dofcoords()
         j = 0
-        for v in vertices:
-            fe.set_data(v)
+        for v,d in zip(vertices, dofs):
+            fe.set_data(v, d)
             mp = fe.map_to_elt(ref_vertices)
             print("============================\n")
-            print(fe.vertices() - mp)
-            print(fe.map_to_elt(np.array([1/3,1/3])) - mesh.elt_to_ccoords(j))
+            print("Vertex mapping:", np.allclose(fe.vertices(), mp))
+            print("Center mapping:", np.allclose(fe.map_to_elt(np.array([1/3,1/3])), mesh.elt_to_ccoords(j)))
             j += 1
 
-    def integral_test(deg=1):
+    def integral_test(deg=1,gauss=1):
         from meshing import RectangleMesh
-        mesh = RectangleMesh(nx=1,ny=1,deg=deg,diag="l")
-        #f = lambda x: np.ones(x.shape[0])
-        #f = lambda x: np.sum(x,1)
-        f = lambda x: np.prod(x,1)
+        mesh = RectangleMesh(nx=4,ny=4,deg=deg,diag="l")
+        #f = lambda x: 1                        # sum to 1
+        #f = lambda x: np.sum(x,1)              # sum to 1
+        #f = lambda x: np.prod(x,1)             # sum to 1/4
+        f = lambda x: np.sin(np.prod(x,1))      # sum to 0.239812
 
-        fe = Element(deg,4)
+        fe = Element(deg,gauss)
         vertices = mesh.elt_to_vcoords()
         dofs = mesh.elt_to_dofcoords()
+
+        integral = 0
         for v,d in zip(vertices, dofs):
             fe.set_data(v,d)
-            print(fe.integrate(f))
-            print(fe.measure())
-            #print(v)
-            print("===================\n")
+            #print(fe.jacobi_dets())
+            #print(fe.integrate(f))
+            #print(fe.measure())
+            #print("===================\n")
+            integral += fe.integrate(f)
+        print("Integral is:", integral)
 
+
+    def assemble_test(n=4,gauss=2):
+        from meshing import RectangleMesh
+        mesh = RectangleMesh(nx=n,ny=n,diag="l")
+
+        fe = Element(1,gauss)
+        vertices = mesh.elt_to_vcoords()
+
+        for v in vertices:
+            fe.set_data(v)
+            a1 = fe.assemble()
+            a2 = fe.assemble_P1_stiffness()
+            print(a1)
+            print(a2)
+            print(np.isclose(a1, a2))
+            print("===================\n")
+            
+    
     #test1()       
     #map_test() 
-    integral_test(1)
+    #integral_test(8,10)
+    assemble_test(n=7)
 
-"""
-når diag=r så er øverste element riktig fortegn
 
-når diag=l så er nederste element riktig fortegn
-"""
 
 
 

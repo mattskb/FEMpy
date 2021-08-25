@@ -62,16 +62,22 @@ def regular_mesh_data(box, res, deg, diag):
             if diag in {"right","r"}: 
                 # når diag=r så er øverste element riktig fortegn
                 dofs_in_cell = np.fliplr(dofs_in_cell)
-                #elt_to_nodes.append(np.flip(dofs_in_cell[np.tril_indices(deg+1)])) #<---fiks
-                #elt_to_nodes.append(dofs_in_cell[np.triu_indices(deg+1)])
+
+                # lower element
+                elt_to_nodes.append(dofs_in_cell[np.tril_indices(deg+1)]) 
+
+                # upper element
+                elt_to_nodes.append(np.flip(dofs_in_cell[np.triu_indices(deg+1)]))
             else:
                 # når diag=l så er nederste element riktig fortegn
-                elt_to_nodes.append(dofs_in_cell[np.tril_indices(deg+1)])
-                
-                elt_to_nodes.append(np.flip(dofs_in_cell[np.triu_indices(deg+1)])) #<---fiks
 
-            elt_to_nodes.append(dofs_in_cell[np.tril_indices(deg+1)])
-            elt_to_nodes.append(dofs_in_cell[np.triu_indices(deg+1)])
+                # lower element
+                elt_to_nodes.append(dofs_in_cell[np.tril_indices(deg+1)])
+                # upper element
+                elt_to_nodes.append(np.flip(dofs_in_cell[np.triu_indices(deg+1)])) 
+
+            #elt_to_nodes.append(dofs_in_cell[np.tril_indices(deg+1)])
+            #elt_to_nodes.append(dofs_in_cell[np.triu_indices(deg+1)])
 
             if iy == 0: bottom.append(dofs_in_cell[-1,:])
             if ix == 0: left.append(dofs_in_cell[:,0])
