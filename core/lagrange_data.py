@@ -68,6 +68,9 @@ def regular_mesh_data(box, res, deg, diag):
 
                 # upper element
                 elt_to_nodes.append(np.flip(dofs_in_cell[np.triu_indices(deg+1)]))
+
+                if ix == 0: left.append(dofs_in_cell[:,-1])
+                if ix == nx-1: right.append(dofs_in_cell[:,0])
             else:
                 # når diag=l så er nederste element riktig fortegn
 
@@ -76,13 +79,15 @@ def regular_mesh_data(box, res, deg, diag):
                 # upper element
                 elt_to_nodes.append(np.flip(dofs_in_cell[np.triu_indices(deg+1)])) 
 
+                if ix == 0: left.append(dofs_in_cell[:,0])
+                if ix == nx-1: right.append(dofs_in_cell[:,-1])
+
             #elt_to_nodes.append(dofs_in_cell[np.tril_indices(deg+1)])
             #elt_to_nodes.append(dofs_in_cell[np.triu_indices(deg+1)])
 
             if iy == 0: bottom.append(dofs_in_cell[-1,:])
-            if ix == 0: left.append(dofs_in_cell[:,0])
             if iy == ny-1: top.append(dofs_in_cell[0,:])
-            if ix == nx-1: right.append(dofs_in_cell[:,-1])
+            
 
     assert len(elt_to_nodes) == n_elts, "Assembly of elt_to_vertex failed."
     assert len(bottom+left+top+right) == n_boundary_edges, "Assembly of boundary failed."

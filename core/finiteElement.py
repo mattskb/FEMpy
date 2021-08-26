@@ -78,8 +78,7 @@ class Element:
             jacobis[:,0,1] += dphi_y*x
             jacobis[:,1,0] += dphi_x*y
             jacobis[:,1,1] += dphi_y*y
-            #print(jacobis); print("------------------------------")    
-            #print(self.eval(j, self.quad_points(), derivative=True)); print("------------------------------")    
+            
         self.__jacobi_dets = np.linalg.det(jacobis)
         self.__ijacobis = np.linalg.inv(jacobis)
         self.__initialized = True
@@ -89,6 +88,7 @@ class Element:
         self.__vertices = None
         self.__dofs = None 
         self.__jacobi_dets = None 
+        self.__ijacobis = None
         self.__initialized = False
 
     def vertices(self, n=None):
@@ -126,10 +126,13 @@ class Element:
         return self.__sfns.eval(n, xi, derivative=derivative)
 
     def map_to_elt(self, xi):
-        """ maps ref coord xi to global coord x """
-        x = np.sum([self.eval(j, xi)*self.dofs(j)[0] for j in range(self.n_dofs())], axis=0)
-        y = np.sum([self.eval(j, xi)*self.dofs(j)[1] for j in range(self.n_dofs())], axis=0)
-        return np.array([x,y]).T
+        """ maps ref coord xi to global coord x, i.e.,
+        x = sum_j phi_j(xi) * dofcoord_j """
+        #x = np.sum([self.eval(j, xi)*self.dofs(j)[0] for j in range(self.n_dofs())], axis=0)
+        #y = np.sum([self.eval(j, xi)*self.dofs(j)[1] for j in range(self.n_dofs())], axis=0)
+        #return = np.array([x,y]).T
+        return np.sum([np.array([self.eval(j,xi)]).T*self.dofs(j)
+            for j in range(self.n_dofs())], axis=0)
 
     def integrate(self, f):
         """ integrate (global) scalar function f over element
@@ -140,22 +143,15 @@ class Element:
         """
         if callable(f):
             integrand = f(self.map_to_elt(self.quad_points()))
-            return sum(integrand*self.jacobi_dets()*self.quad_weights())
+            return np.sum(integrand*self.jacobi_dets()*self.quad_weights())
         else:
             return f*self.measure()
                 
     #def assemble(self, c=None, derivative=True):
     def assemble_P1_stiffness(self):
         """ shortcut method for assembling stiffness matrix for P1 elemenets """
-        v1,v2,v3 = self.vertices()
-        x1, y1 = v1
-        x2, y2 = v2
-        x3, y3 = v3
-        D = np.array([[x3-x2, x1-x3, x2-x1],[y3-y2, y1-y3, y2-y1]])
-        return np.dot(D.T,D)/(4*self.measure())
-
-        #E = self.__vertices[[1, 2, 0],:] - self.__vertices[[2, 0, 1],:]
-        #return np.dot(E,E.T)/(4*self.measure())
+        E = self.__vertices[[1, 2, 0],:] - self.__vertices[[2, 0, 1],:]
+        return np.matmul(E,E.T)/(4*self.measure())
 
     def assemble(self, c=None, derivative=True):
         """Assembles local stiffness (default) or mass matrix 
@@ -169,7 +165,10 @@ class Element:
         A = np.zeros((n,n))
         for i in range(n):
             for j in range(n):
-                A[i,j] = self.integrate_phi_phi(i, j, c=c, derivative=derivative)
+                if derivative:
+                    A[i,j] = self.integrate_dphi_dphi(i, j, c=c)
+                else:
+                    A[i,j] = self.integrate_phi_phi(i, j, c=c)
         return A
 
     def assemble_rhs(self, f):
@@ -185,8 +184,51 @@ class Element:
             rhs[i] = self.integrate_phi_f(i, f)
         return rhs
 
-    def integrate_phi_phi(self, i, j, c=None, derivative=False):
-        """Integrate product of shape functions i and j product over element """
+    def integrate_phi_phi(self, i, j, c=None):
+        """Integrate c*phi_i*phi_j over element """
+
+        # broadcast coeff to (n_quad,) regardless of input
+        if c is None:
+            c_eval = 1 
+        elif callable(c):
+            c_eval = c(self.quad_points())
+        else:
+            c_eval = c*np.ones(self.n_quad())
+
+        phi_i = self.eval(i, self.quad_points(), False)
+        phi_j = self.eval(j, self.quad_points(), False)
+
+        return np.sum(c_eval*phi_i*phi_j*self.jacobi_dets()*self.quad_weights())
+
+    def integrate_dphi_dphi(self, i, j, c=None):
+        """Integrate c*dphi_i*dphi_j over element """
+
+        # broadcast coeff to (n_quad, 2, 2) regardless of input
+        if c is None:
+            c_eval = np.broadcast_to(np.eye(2),(self.n_quad(),2,2))
+        elif callable(c):
+            c_eval = np.array([k*np.eye(2) for k in c(self.quad_points())])
+        else:
+            c_eval = np.array([c*np.eye(2) for k in range(self.n_quad())])
+
+        # eval shapefunctions at quad points and get jacobis of transform x -> xi (map to reference), dxi/dx
+        gradi = self.eval(i, self.quad_points(), True)
+        gradj = self.eval(j, self.quad_points(), True)
+
+        inv_jaco = self.__ijacobis
+
+        # chain rule, i.e., dx_phi = dxi_phi_ref * dxi / dx 
+        gradi = np.array([np.sum(gradi*inv_jaco[:,0,:],1), np.sum(gradi*inv_jaco[:,1,:],1)]).T
+        gradj = np.array([np.sum(gradj*inv_jaco[:,0,:],1), np.sum(gradj*inv_jaco[:,1,:],1)]).T
+
+        # multiply with coeff
+        gradi = np.array([np.sum(gradi*c_eval[:,0,:],1), np.sum(gradi*c_eval[:,1,:],1)]).T
+
+        # return integral
+        return np.sum(np.sum(gradi*gradj,1)*self.jacobi_dets()*self.quad_weights())
+
+    def integrate_phi_phi_old(self, i, j, c=None, derivative=False):
+        """Integrate product of shape functions i and j over element """
 
         if derivative:
             #ix, iy = self.eval(i, self.quad_points(), derivative).T
@@ -201,9 +243,6 @@ class Element:
                     tempi = np.dot(gradi[k,:], inv_jaco[k,:,:])
                     tempj = np.dot(gradj[k,:], inv_jaco[k,:,:])
                     integrand[k] = np.dot(tempi,tempj)
-
-                #print(ix);print(iy);print(jx);print(jy)
-                #print(integrand)
                 
             else:
                 if callable(c): # <============================ variable coefficient
@@ -243,7 +282,7 @@ class Element:
             integrand = self.eval(i, self.quad_points(), derivative=False)*f(self.quad_points())
         else:
             integrand = self.eval(i, self.quad_points(), derivative=False)*f
-        return sum(integrand*self.jacobi_dets()*self.quad_weights())
+        return np.sum(integrand*self.jacobi_dets()*self.quad_weights())
 
 
 #--------------------------------------------------------------------------------------#
@@ -268,11 +307,14 @@ if __name__ == "__main__":
             #print("map to elt:\n{}".format(fe.map_to_elt(np.ones((4,2)))))
             #print("map to elt:\n{}".format(fe.map_to_elt(np.array([0,0]))))
 
-    def map_test():
+#--------------------------------------------------------------------------------------#
+
+    def map_test(n=4,deg=1,diag="r"):
+        print("Map to element test:\n===============================================")
         from meshing import RectangleMesh
-        mesh = RectangleMesh(nx=3,ny=3,deg=2)
+        mesh = RectangleMesh(nx=n,ny=n,deg=deg,diag=diag)
         ref_vertices = np.array([[0,1],[0,0],[1,0]])
-        fe = Element(2,4)
+        fe = Element(deg,4)
         vertices = mesh.elt_to_vcoords(); dofs = mesh.elt_to_dofcoords()
         j = 0
         for v,d in zip(vertices, dofs):
@@ -284,50 +326,92 @@ if __name__ == "__main__":
             j += 1
 
     def integral_test(deg=1,gauss=1):
+        print("Integrate test:\n===============================================")
         from meshing import RectangleMesh
         mesh = RectangleMesh(nx=4,ny=4,deg=deg,diag="l")
-        #f = lambda x: 1                        # sum to 1
-        #f = lambda x: np.sum(x,1)              # sum to 1
-        #f = lambda x: np.prod(x,1)             # sum to 1/4
-        f = lambda x: np.sin(np.prod(x,1))      # sum to 0.239812
+
+        funcs = [lambda x: 1,\
+                 lambda x: np.sum(x,1),\
+                 lambda x: np.prod(x,1),
+                 lambda x: np.sin(np.prod(x,1)),
+                 lambda x: np.log(np.prod(x,1)+1)]
+        answers = [1,\
+                   1,\
+                   0.25,\
+                   0.239812,\
+                   0.208761]
 
         fe = Element(deg,gauss)
         vertices = mesh.elt_to_vcoords()
         dofs = mesh.elt_to_dofcoords()
 
-        integral = 0
-        for v,d in zip(vertices, dofs):
-            fe.set_data(v,d)
-            #print(fe.jacobi_dets())
-            #print(fe.integrate(f))
-            #print(fe.measure())
-            #print("===================\n")
-            integral += fe.integrate(f)
-        print("Integral is:", integral)
-
+        template = "{:<10} - {:<10} = {:<10}"
+        print(template.format("True        ","Calc        ","Diff"))
+        print("------------------------------------------")
+        template = "{:<10.10f} - {:<10.10f} = {:<10.10f}"
+        for f, ans in zip(funcs, answers):
+            integral = 0
+            for v,d in zip(vertices, dofs):
+                fe.set_data(v,d)
+                integral += fe.integrate(f)
+            print(template.format(ans, integral, np.abs(ans-integral)))
 
     def assemble_test(n=4,gauss=2):
+        print("Assemble test:\n===============================================")
+        from meshing import RectangleMesh
+        mesh = RectangleMesh(nx=n,ny=n,diag="r")
+
+        fe = Element(1,gauss)
+        vertices = mesh.elt_to_vcoords()
+
+        result = True
+        for v in vertices:
+            fe.set_data(v)
+            a1 = fe.assemble()
+            a2 = fe.assemble_P1_stiffness()
+            a3 = fe.assemble(derivative=False)
+            #print(a1)
+            #print(a2)
+            #print(np.isclose(a1, a2))
+            #print("===================\n")
+            result = result and np.allclose(a1, a2)
+            if not result:
+                print("Test failed.")
+                break
+        print("Success")
+
+    def rhs_test(n=4,gauss=2):
+        print("RHS test:\n===============================================")
         from meshing import RectangleMesh
         mesh = RectangleMesh(nx=n,ny=n,diag="l")
 
         fe = Element(1,gauss)
         vertices = mesh.elt_to_vcoords()
 
+        #template = "{:<10} - {:<10} = {:<10}"
+        #print(template.format("True        ","Calc        ","Diff"))
+        #print("------------------------------------------")
+        #template = "{:<10.10f} - {:<10.10f} = {:<10.10f}"
         for v in vertices:
             fe.set_data(v)
-            a1 = fe.assemble()
-            a2 = fe.assemble_P1_stiffness()
-            print(a1)
-            print(a2)
-            print(np.isclose(a1, a2))
+            rhs = fe.assemble_rhs(1)
+            print(rhs)
+            print(fe.measure()/3)
+            print(np.allclose(rhs,fe.measure()/3))
             print("===================\n")
             
     
     #test1()       
-    #map_test() 
-    #integral_test(8,10)
-    assemble_test(n=7)
+    #map_test(deg=5,diag="r") 
+    #integral_test(deg=1,gauss=4)
+    assemble_test(n=7,gauss=2)
+    #rhs_test()
 
+    from meshing import RectangleMesh
+    n = 2; gauss = 4
+    mesh = RectangleMesh(nx=n,ny=n,diag="l")
+    fe = Element(1,gauss)
+    fe.set_data(mesh.elt_to_vcoords(1))
 
 
 

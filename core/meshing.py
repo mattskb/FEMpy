@@ -69,12 +69,13 @@ def regular_mesh_data(box, res, diag):
     return vertex_to_coords, elt_to_vertex
 """
 
-def plot_mesh(vertex_to_coords, elt_to_vertex, dof_to_coords, title, figsize, grid, savefig):
+def plot_mesh(vertex_to_coords, elt_to_vertex, dof_to_coords, bdofs, title, figsize, grid, savefig):
     """Plots trianglular mesh with or without DOFs indicated
     Input:
         vertex_to_coords 	- vertex number to coordinates 
         elt_to_vertex 	 	- element number to vertex number
         dof_to_coords 		- DOF number to coordinate (optional)
+        bdofs               - numbers of boundary DOFS (optional) 
         figsize	    		- size of figure (optional)
         savefig 	    	- file name of saved figure (optional)
     """
@@ -90,8 +91,14 @@ def plot_mesh(vertex_to_coords, elt_to_vertex, dof_to_coords, title, figsize, gr
 
     # plot DOFs
     if dof_to_coords is not None:
-        dof_x = dof_to_coords[:,0]; dof_y = dof_to_coords[:,1]
+        idofs = np.setdiff1d(range(dof_to_coords.shape[0]),bdofs)
+
+        dof_x = dof_to_coords[idofs,0]; dof_y = dof_to_coords[idofs,1]
         plt.plot(dof_x,dof_y,"go",markersize=10)
+        if bdofs is not None:
+            print("hei")
+            dof_x = dof_to_coords[bdofs,0]; dof_y = dof_to_coords[bdofs,1]
+            plt.plot(dof_x,dof_y,"bo",markersize=10)
 
     # set title
     if title is None:
@@ -250,16 +257,32 @@ class Mesh:
         else:
             return np.concatenate(tuple([self.__boundary_data[g] for g in group]))
         
-    def plot(self, dof_to_coords=None, title=None, figsize=(10,10), grid=False, savefig=None):
+    def plot(self, **kwargs):
         """ plot mesh
         DOFs given by dofs can be shown in figure
         file - name of .pdf file if figure is saved
         """
+        dof_to_coords = kwargs.pop("dof_to_coords",None)
+        title = kwargs.pop("title",None)
+        figsize = kwargs.pop("figsize",(10,10))
+        grid = kwargs.pop("grid",False)
+        savefig = kwargs.pop("savefig",None)
+        boundary = kwargs.pop("boundary",None)
+
         if dof_to_coords in {1, True}:
             dof_to_coords = self.dof_to_coords()
         elif dof_to_coords in {0, False}:
             dof_to_coords = None
-        plot_mesh(self.vertex_to_coords(), self.elt_to_vertex(), dof_to_coords,
+
+        if boundary in {1, True}:
+            bedge_to_dofs = self.bedge_to_dofs()
+            boundary = np.unique(np.ravel(bedge_to_dofs))
+        elif: 
+        elif boundary is not None:
+            bedge_to_dofs = self.bedge_to_dofs(boundary)
+            boundary = np.unique(np.ravel(bedge_to_dofs))
+
+        plot_mesh(self.vertex_to_coords(), self.elt_to_vertex(), dof_to_coords, boundary,
             title, figsize, grid, savefig)
 
 #--------------------------------------------------------------------------------------#
@@ -350,7 +373,7 @@ if __name__ == '__main__':
         print("- bedge_to_dofs: (some)", mesh.bedge_to_dofs("top","left").shape)
 
 
-        mesh.plot(dof_to_coords=True)
+        mesh.plot(dof_to_coords=True,boundary=True)
 
         #print(mesh.vertex_to_coords().shape)
         #print(mesh.elt_to_vertex())
@@ -358,4 +381,5 @@ if __name__ == '__main__':
 
         #dof_to_coords, elt_to_dofs = regular_mesh_dofs(([1,0],[1,0]), (2,2), 2, "right")
 
-    rectangle_mesh_test()
+    n = 10
+    rectangle_mesh_test(nx=n, ny=n, diag="r", deg=2)

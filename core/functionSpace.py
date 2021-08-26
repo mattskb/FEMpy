@@ -25,7 +25,7 @@ class Space:
         """ return element number to DOF numbers """
         return self.__elt_to_dofs
 
-    def assemble(self, c=None, derivative=False, cond=False):
+    def assemble(self, derivative, c=None, cond=False):
         """Assemble linear system
         Input:
             c           - coefficient (variable or constant), can be tensor valued if appropriate
@@ -34,37 +34,28 @@ class Space:
         Output:
             A           - stiffness/mass matrix (dense)
         """
-
-        # assemble
-        #print "Assembling linear system..."
         A = np.zeros((self.n_dofs(), self.n_dofs()))                  # initialize global assembly matrix
 
-        for j in range(self.__mesh.n_elts()):
-            # local assemble for element j
-            self.__fe.set_data(self.__mesh.elt_to_vcoords(j),\
-            self.__mesh.elt_to_dofcoords(j))                          # give element data to FE
-            elt_assemble = self.__fe.assemble(c, derivative)          # element assembly
-            #print(elt_assemble)
-            #from numpy.linalg import cond
-            #print(cond(elt_assemble))
-            #print("========================================")
-            local_dofs = np.array([self.__mesh.elt_to_dofs(j)])       # indices
-            A[local_dofs.T, local_dofs] += elt_assemble               # add to global assembly
+        for vc, dc, d in zip(self.__mesh.elt_to_vcoords(),\
+                             self.__mesh.elt_to_dofcoords(),\
+                             self.__mesh.elt_to_dofs()): 
 
+            self.__fe.set_data(vc, dc)                                # give element data to FE
+            elt_assemble = self.__fe.assemble(c, derivative)          # element assembly
+            A[np.array([d]).T, d] += elt_assemble                     # add to global assembly
         if cond:
             from numpy.linalg import cond
-            print("Condition number for assembly of {} matrix: {}".format("stiffness" if derivative else "mass", cond(A)))
-
+            print("Condition number of {} matrix: {}".format("stiffness" if derivative else "mass", cond(A)))
         return A
 
 
     def stiffness(self, c=None, cond=False):
         """ assemble stiffness matrix """
-        return self.assemble(c, True, cond)
+        return self.assemble(True, c, cond)
 
     def mass(self, c=None, cond=False):
         """ assemble mass matrix """
-        return self.assemble(c, False, cond)
+        return self.assemble(False, c, cond)
 
     def rhs(self, f):
         """Assemble right hand side vector 
@@ -76,16 +67,11 @@ class Space:
             return rhs
         else:
             # assemble
-            for j in range(self.__mesh.n_elts()):
-                self.__fe.set_data(self.__mesh.elt_to_vcoords(j),\
-                    self.__mesh.elt_to_dofcoords(j))                          # give element data to FE
-
-                #local_dofs = np.array([self.__mesh.elt_to_dofs(j)])
-                local_dofs = self.__mesh.elt_to_dofs(j)
-                #print(np.array([self.__mesh.elt_to_vertices(j)]))
-                #print(self.__fe.assemble_rhs(f))
-
-                rhs[local_dofs] += self.__fe.assemble_rhs(f)
+            for vc, dc, d in zip(self.__mesh.elt_to_vcoords(),\
+                                 self.__mesh.elt_to_dofcoords(),\
+                                 self.__mesh.elt_to_dofs()):                        # give element data to FE
+                self.__fe.set_data(vc, dc) 
+                rhs[d] += self.__fe.assemble_rhs(f)
             return rhs
 
 #--------------------------------------------------------------------------------------#
@@ -94,15 +80,7 @@ if __name__ == '__main__':
     import math
     from meshing import RectangleMesh
 
-
-    #deg = 1
-    #mesh = RectangleMesh(nx=1,ny=1,diag="l")
-    #fs = Space(mesh, deg)
-    #A = fs.stiffness(cond=True)
-    #print(A)
-    #print("no of dofs: ", fs.n_dofs())
-
-    def dirichlet_ex(n=16, deg=1, gauss=4, diag='right', plot=True):
+    def dirichlet_ex(n=16, deg=1, gauss=4, diag='r', plot=True):
         """ Poisson w/ homogenous Dirichlet bc in 2D
         """
         from scipy.sparse import issparse, csc_matrix, csr_matrix, dia_matrix
@@ -111,24 +89,86 @@ if __name__ == '__main__':
 
         print("\nDirichlet in 2D")
         # data
-        mesh = RectangleMesh(nx=n,ny=n,deg=1,diag=diag)
+        mesh = RectangleMesh(nx=n,ny=n,deg=deg,diag=diag)
 
-        f = lambda x: 32.*(x[:,1]*(x[:,1]-1.) + x[:,0]*(x[:,0]-1.))
+        f = lambda x: 32.*(x[:,0]*(1.-x[:,0]) + x[:,1]*(1.-x[:,1]))
         u_ex = lambda x: 16.*x[:,0]*(1.-x[:,0])*x[:,1]*(1.-x[:,1])
 
         # assemble
         fs = Space(mesh, deg, gauss=gauss)
-        A = fs.stiffness(cond=False)
+        A = fs.stiffness(cond=True)
         rhs = fs.rhs(f)
 
-        # solution vector
-        u = np.zeros(fs.n_dofs())
 
         bedge_to_dofs = mesh.bedge_to_dofs()
         enforced_dof_nos = np.unique(np.ravel(bedge_to_dofs))
 
         free_dofs = np.setdiff1d(range(fs.n_dofs()), enforced_dof_nos)   
         n_free_dofs = len(free_dofs)   
+
+        # solution vector
+        u = np.zeros(fs.n_dofs())
+        U_ex = u_ex(mesh.dof_to_coords())
+        u[enforced_dof_nos] = U_ex[enforced_dof_nos]
+
+        # modify linear system and solve
+        A_free = A[free_dofs.reshape(n_free_dofs, 1), free_dofs]
+        rhs = rhs - csc_matrix(A).dot(u)
+
+        u[free_dofs] = spla.spsolve(csc_matrix(A_free), rhs[free_dofs])
+
+        # plot solution
+        X,Y = mesh.dof_to_coords().T
+
+        if plot:
+            #tri = Triangulation(X, Y, elt_to_vertex)
+            fig = plt.figure(figsize=plt.figaspect(0.5))
+
+            ax = fig.add_subplot(1, 2, 1, projection='3d')
+            ax.plot_trisurf(X, Y, u, cmap=plt.cm.Spectral) #triangles=tri.triangles, cmap=plt.cm.Spectral)
+            ax.set_title("Numerical")
+            ax.set_zlim(0, 1)
+
+            ax = fig.add_subplot(1, 2, 2, projection='3d')
+            ax.plot_trisurf(X, Y, U_ex, cmap=plt.cm.Spectral)
+            ax.set_title("Exact")
+            ax.set_zlim(0, 1)
+            
+
+            plt.show()
+
+#--------------------------------------------------------------------------------------#
+
+    def dirichlet_ex2(n=16, deg=1, gauss=4, diag='r', plot=True):
+        """ Poisson w/ non-homogenous Dirichlet bc in 2D
+        """
+        from scipy.sparse import issparse, csc_matrix, csr_matrix, dia_matrix
+        import scipy.sparse.linalg as spla
+        import matplotlib.pyplot as plt
+
+        print("\nDirichlet in 2D")
+        # data
+        mesh = RectangleMesh(nx=n,ny=n,deg=deg,diag=diag)
+
+        f = -6
+        u_ex = lambda x: 1 + x[:,0]**2 + 2*x[:,1]**2
+
+        # assemble
+        fs = Space(mesh, deg, gauss=gauss)
+        A = fs.stiffness(cond=True)
+        rhs = fs.rhs(f)
+
+        
+        bedge_to_dofs = mesh.bedge_to_dofs()
+        enforced_dof_nos = np.unique(np.ravel(bedge_to_dofs))
+
+        free_dofs = np.setdiff1d(range(fs.n_dofs()), enforced_dof_nos)   
+        n_free_dofs = len(free_dofs)   
+
+        # solution vector
+        u = np.zeros(fs.n_dofs())
+        U_ex = u_ex(mesh.dof_to_coords())
+        u[enforced_dof_nos] = U_ex[enforced_dof_nos]
 
         # modify linear system and solve
         A_free = A[free_dofs.reshape(n_free_dofs, 1), free_dofs]
@@ -146,19 +186,19 @@ if __name__ == '__main__':
             ax = fig.add_subplot(1, 2, 1, projection='3d')
             ax.plot_trisurf(X, Y, u, cmap=plt.cm.Spectral) #triangles=tri.triangles, cmap=plt.cm.Spectral)
             ax.set_title("Numerical")
-            ax.set_zlim(0, 1)
+            #ax.set_zlim(0, 1)
 
             ax = fig.add_subplot(1, 2, 2, projection='3d')
             ax.plot_trisurf(X, Y, u_ex(mesh.dof_to_coords()), cmap=plt.cm.Spectral)
             ax.set_title("Exact")
-            ax.set_zlim(0, 1)
+            #ax.set_zlim(0, 1)
             
 
             plt.show()
 
-    dirichlet_ex(n=32)
+#--------------------------------------------------------------------------------------#
 
-    def neuman_ex(n=16, deg=1, gauss=4, diag='right'):
+    def neuman_ex(n=16, deg=1, gauss=4, diag='r', plot=True):
         """ Poisson w/ homogenous Neuman bc in 2D
         ill conditioned -> use CG
         - P1 conv rate: ~ 4
@@ -169,63 +209,47 @@ if __name__ == '__main__':
 
         print("\nNeuman ex2 in 2D")
         # data
-        mesh = RectangleMesh(nx=n,ny=n,diag=diag)
+        mesh = RectangleMesh(nx=n,ny=n,deg=deg,diag=diag)
         pi = math.pi
 
         f = lambda x: pi*(np.cos(pi*x[:,0]) + np.cos(pi*x[:,1]))
-        u_ex = lambda x: (math.cos(pi*x[0]) + math.cos(pi*x[1]))/pi
+        u_ex = lambda x: (np.cos(pi*x[:,0]) + np.cos(pi*x[:,1]))/pi
 
         # assemble
         fs = Space(mesh, deg, gauss)
         A = fs.stiffness(cond=True)
         rhs = fs.rhs(f)
-        print(A)
+ 
         # solve
-        u, temp = spla.cg(csc_matrix(A), rhs)
-        #print(temp); print(u)
+        u, temp = spla.cg(csr_matrix(A), rhs)
+        print(temp)
+        #u = spla.spsolve(csr_matrix(A), rhs)
+        
 
         X,Y = mesh.dof_to_coords().T
 
-        fig, ax = plt.subplots() #figsize=(10,10),num=j+1
-        cont = ax.tricontourf(X, Y, u, 100)            
-        plt.colorbar(cont)
+        if plot:
+            #tri = Triangulation(X, Y, elt_to_vertex)
+            fig = plt.figure(figsize=plt.figaspect(0.5))
 
-    #neuman_ex()
+            ax = fig.add_subplot(1, 2, 1, projection='3d')
+            ax.plot_trisurf(X, Y, u, cmap=plt.cm.Spectral) #triangles=tri.triangles, cmap=plt.cm.Spectral)
+            ax.set_title("Numerical")
+            #ax.set_zlim(0, 1)
+
+            ax = fig.add_subplot(1, 2, 2, projection='3d')
+            ax.plot_trisurf(X, Y, u_ex(mesh.dof_to_coords()), cmap=plt.cm.Spectral)
+            ax.set_title("Exact")
+            #ax.set_zlim(0, 1)
+            
+
+            plt.show()
+    
 #--------------------------------------------------------------------------------------#
 
-    def p0_test():
-        """ test with P0 element """
-        u_ex = lambda x: 16.*x[0]*(1.-x[0])*x[1]*(1.-x[1])      # exact solution
-
-        mesh = UnitSquareMesh(16,16)
-        fs = Space(mesh, Element('lagrange', 0), gauss=4)
-
-        A = fs.mass()
-        rhs = fs.rhs(u_ex)
-
-        u = fem_solver(fs, A, rhs)
-        plot_sol(fs,u,u_ex,contour=False)
-
-#--------------------------------------------------------------------------------------#
-
-    def poisson_test_2d():
-        """ Poisson problem 2D test with homogenous Dirichlet bc """
-        u_ex = lambda x: 16.*x[0]*(1.-x[0])*x[1]*(1.-x[1])      # exact solution
-        f = lambda x: 32.*(x[1]*(1.-x[1]) + x[0]*(1.-x[0]))     # right hand side
-
-        mesh = UnitSquareMesh(16,16,diag='right')
-        fs = Space(mesh, Element('lagrange', deg=1), gauss=4)
-
-        A = fs.stiffness()
-        rhs = fs.rhs(f)
-
-        bc = Dirichlet(fs,0)
-        u = fem_solver(fs, A, rhs, bc)
-        plot_sol(fs,u,u_ex,contour=False)
+    dirichlet_ex(n=16, deg=1, gauss=4, diag='l', plot=True)
+    #dirichlet_ex2(n=16, deg=1, gauss=4, diag='l', plot=True)
+    #neuman_ex(n=16, deg=1, gauss=4, diag='r', plot=True)
 
 
-#--------------------------------------------------------------------------------------#
-
-    #p0_test()
-    #poisson_test_2d()
 
