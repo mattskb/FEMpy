@@ -9,7 +9,7 @@ class Element:
             deg - degree of piecewise polynomial (int)
             gauss - degree of Gaussian quadrature (int)
     """
-    def __init__(self, deg, gauss):
+    def __init__(self, deg, gauss, gcheck):
         self.__deg = deg
         self.__sfns = ShapeFunctions(self.__deg)
         self.__initialized = False
@@ -23,6 +23,9 @@ class Element:
         self.__n_quad = xw.shape[0]             # number of quad points
         self.__quad_weights = xw[:,2]/2         # quad weights
         self.__quad_points = xw[:,:2]           # quad points
+
+        if gcheck:
+            self.__quad_weights *= 2
 
     def deg(self):
         """ return degree of element """
@@ -309,12 +312,12 @@ if __name__ == "__main__":
 
 #--------------------------------------------------------------------------------------#
 
-    def map_test(n=4,deg=1,diag="r"):
+    def map_test(n=4,deg=1,diag="r",gauss=4):
         print("Map to element test:\n===============================================")
         from meshing import RectangleMesh
         mesh = RectangleMesh(nx=n,ny=n,deg=deg,diag=diag)
         ref_vertices = np.array([[0,1],[0,0],[1,0]])
-        fe = Element(deg,4)
+        fe = Element(deg,gauss)
         vertices = mesh.elt_to_vcoords(); dofs = mesh.elt_to_dofcoords()
         j = 0
         for v,d in zip(vertices, dofs):
@@ -402,10 +405,10 @@ if __name__ == "__main__":
             
     
     #test1()       
-    #map_test(deg=5,diag="r") 
-    #integral_test(deg=1,gauss=4)
-    assemble_test(n=7,gauss=2)
-    #rhs_test()
+    #map_test(n=4, deg=5,diag="r", gauss=1) 
+    #integral_test(deg=1,gauss=2)
+    #assemble_test(n=7,gauss=1)
+    rhs_test(gauss=1)
 
     from meshing import RectangleMesh
     n = 2; gauss = 4

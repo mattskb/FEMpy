@@ -76,8 +76,13 @@ def regular_mesh_data(box, res, deg, diag):
 
                 # lower element
                 elt_to_nodes.append(dofs_in_cell[np.tril_indices(deg+1)])
+
                 # upper element
                 elt_to_nodes.append(np.flip(dofs_in_cell[np.triu_indices(deg+1)])) 
+
+
+                
+
 
                 if ix == 0: left.append(dofs_in_cell[:,0])
                 if ix == nx-1: right.append(dofs_in_cell[:,-1])
