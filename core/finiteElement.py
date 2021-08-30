@@ -6,10 +6,10 @@ from shapefuncs import ShapeFunctions
 class Element:
     """ Finite Element class
     Input:
-            deg - degree of piecewise polynomial (int)
-            gauss - degree of Gaussian quadrature (int)
+            deg     - degree of piecewise polynomial (int)
+            gauss   - degree of Gaussian quadrature (int)
     """
-    def __init__(self, deg, gauss, gcheck):
+    def __init__(self, deg, gauss):
         self.__deg = deg
         self.__sfns = ShapeFunctions(self.__deg)
         self.__initialized = False
@@ -17,41 +17,38 @@ class Element:
         self.__dofs = None
         self.__jacobi_dets = None
 
-        # get Gaussian quadrature points and weights ([x,y,w])
+        # get Gaussian quadrature points and weights ([x,y,w]), of reference triangle
         xw = np.array(gaussPts(gauss, dim=2))
 
         self.__n_quad = xw.shape[0]             # number of quad points
         self.__quad_weights = xw[:,2]/2         # quad weights
         self.__quad_points = xw[:,:2]           # quad points
 
-        if gcheck:
-            self.__quad_weights *= 2
-
     def deg(self):
-        """ return degree of element """
+        """Return polynomial degree of element"""
         return self.__deg
 
     def n_dofs(self):
-        """ return number of dofs """
+        """Return number of DOFs"""
         return self.__sfns.n_dofs()
 
     def initialized(self):
-        """ True if element vertices and DOFs are initialized """
+        """True if element vertices and DOFs are initialized"""
         return self.__initialized
 
     def n_quad(self):
-        """ return number of quadrature points """
+        """Return number of quadrature points"""
         return self.__n_quad
 
     def quad_weights(self, n=None):
-        """ return quadrature weights or weight of quad point n"""
+        """Return quadrature weights or weight of quad point n"""
         if n is None:
             return self.__quad_weights
         else:
             return self.__quad_weights[n]
 
     def quad_points(self, n=None):
-        """ return quadrature points or quad point n"""
+        """Return quadrature points or quad point n"""
         if n is None:
             return self.__quad_points
         else:
@@ -61,8 +58,8 @@ class Element:
         """Set data for element
         Input:
             vertices    - vertex coords of element
-            dofs        - DOF coords of elememt, must correspond to degree (optional if degree equals 1)
-        """
+            dofs        - DOF coords of elememt, must correspond to degree 
+                            (optional if degree equals 1) in which case DOFs are vertices"""
         if dofs is None: 
             dofs = vertices
         assert dofs.shape == (self.n_dofs(),2), "DOFs incompatible with shape functions."
@@ -87,7 +84,7 @@ class Element:
         self.__initialized = True
 
     def clear_data(self):
-        """ clear element data, i.e., vertices and DOFs """
+        """Clear element data i.e., vertices and DOFs and Jacobis"""
         self.__vertices = None
         self.__dofs = None 
         self.__jacobi_dets = None 
@@ -95,26 +92,26 @@ class Element:
         self.__initialized = False
 
     def vertices(self, n=None):
-        """ return vertex coords or coord of vertex n """
+        """Return vertex coords of element or coord of vertex n """
         if n is None or not self.initialized():
             return self.__vertices
         else:
             return self.__vertices[n,:]
 
     def dofs(self, n=None):
-        """ return DOF coords or coord of DOF n """
+        """Return DOF coords of element or coord of DOF n """
         if n is None or not self.initialized():
             return self.__dofs
         else:
             return self.__dofs[n,:]
 
     def jacobi_dets(self):
-        """ return jacobi dets of transformation xi -> x at quad points 
-        with P1 basis det = 2*measure """
+        """Return Jacobi determinants of transformation xi -> x at quad points 
+            (with P1 basis: det = 2*measure) """
         return self.__jacobi_dets
 
     def measure(self):
-        """ returns measure (area) of element """
+        """Measure (area) of element"""
         if self.initialized():
             return np.linalg.det(np.concatenate((self.vertices(),np.ones((3,1))),axis=1))/2
         else:
@@ -125,62 +122,63 @@ class Element:
         Input:
             n   - n'th shape function to be evaluated
             xi  - local coord
-        """
+        Output:
+            phi_n(xi) or dphi_n(xi)"""
         return self.__sfns.eval(n, xi, derivative=derivative)
 
     def map_to_elt(self, xi):
-        """ maps ref coord xi to global coord x, i.e.,
-        x = sum_j phi_j(xi) * dofcoord_j """
-        #x = np.sum([self.eval(j, xi)*self.dofs(j)[0] for j in range(self.n_dofs())], axis=0)
-        #y = np.sum([self.eval(j, xi)*self.dofs(j)[1] for j in range(self.n_dofs())], axis=0)
-        #return = np.array([x,y]).T
+        """ maps ref coord xi to global coord x using shape functions i.e.,
+            x = sum_j phi_j(xi) * dofcoord_j 
+        Input:
+            xi  - coord in reference triangle 
+        Output:
+            x   - coord in current (physical) triangle"""
         return np.sum([np.array([self.eval(j,xi)]).T*self.dofs(j)
             for j in range(self.n_dofs())], axis=0)
 
     def integrate(self, f):
-        """ integrate (global) scalar function f over element
+        """Integrate (global) scalar function f over element
         Input:
-            f - function to be integrated (callable or constant)
+            f   - function to be integrated (callable or constant)
         Output:
-            integral
-        """
+            integral over element"""
         if callable(f):
             integrand = f(self.map_to_elt(self.quad_points()))
             return np.sum(integrand*self.jacobi_dets()*self.quad_weights())
         else:
             return f*self.measure()
                 
-    #def assemble(self, c=None, derivative=True):
     def assemble_P1_stiffness(self):
-        """ shortcut method for assembling stiffness matrix for P1 elemenets """
+        """Shortcut method for assembling stiffness matrix for P1 elemenets"""
         E = self.__vertices[[1, 2, 0],:] - self.__vertices[[2, 0, 1],:]
         return np.matmul(E,E.T)/(4*self.measure())
 
     def assemble(self, c=None, derivative=True):
         """Assembles local stiffness (default) or mass matrix 
         Input:
-            c               - coefficient (variable or constant), can be tensor valued if derivative
+            c               - coefficient (callable or constant), can be tensor valued if derivative
             derivative      - True if stiffness, false if mass
         Output:
-            A               - matrix of (c dphi_i, dphi_j) or (c phi_i, phi_j)
-        """
-        n = self.n_dofs()
-        A = np.zeros((n,n))
-        for i in range(n):
-            for j in range(n):
-                if derivative:
-                    A[i,j] = self.integrate_dphi_dphi(i, j, c=c)
-                else:
-                    A[i,j] = self.integrate_phi_phi(i, j, c=c)
-        return A
+            A               - matrix of (c dphi_i, dphi_j) or (c phi_i, phi_j)"""
+        if c is None and derivative and self.deg() == 1:
+            return self.assemble_P1_stiffness()
+        else:
+            n = self.n_dofs()
+            A = np.zeros((n,n))
+            for i in range(n):
+                for j in range(n):
+                    if derivative:
+                        A[i,j] = self.integrate_dphi_dphi(i, j, c=c)
+                    else:
+                        A[i,j] = self.integrate_phi_phi(i, j, c=c)
+            return A
 
     def assemble_rhs(self, f):
         """Assembles local right hand side
         Input:
             f       - function (callable or constant)
         Output:
-            rhs     - vector of (phi_i, f)
-        """
+            rhs     - vector of (phi_i, f)"""
         n = self.n_dofs()
         rhs = np.zeros(n)
         for i in range(n):
@@ -188,7 +186,12 @@ class Element:
         return rhs
 
     def integrate_phi_phi(self, i, j, c=None):
-        """Integrate c*phi_i*phi_j over element """
+        """Integrate product of shape functions over element 
+        Input:
+            i, j    - indexes of shape functions
+            c       - coeff (scalar valued or constant) 
+        Outpu:
+            integral of c*phi_i*phi_j over element"""
 
         # broadcast coeff to (n_quad,) regardless of input
         if c is None:
@@ -204,7 +207,12 @@ class Element:
         return np.sum(c_eval*phi_i*phi_j*self.jacobi_dets()*self.quad_weights())
 
     def integrate_dphi_dphi(self, i, j, c=None):
-        """Integrate c*dphi_i*dphi_j over element """
+        """Integrate product of shape function gradients over element 
+        Input:
+            i, j    - indexes of shape functions
+            c       - coeff (scalar/tensor valued or constant) 
+        Output:
+            integral of c*dphi_i*dphi_j over element"""
 
         # broadcast coeff to (n_quad, 2, 2) regardless of input
         if c is None:
@@ -229,62 +237,22 @@ class Element:
 
         # return integral
         return np.sum(np.sum(gradi*gradj,1)*self.jacobi_dets()*self.quad_weights())
-
-    def integrate_phi_phi_old(self, i, j, c=None, derivative=False):
-        """Integrate product of shape functions i and j over element """
-
-        if derivative:
-            #ix, iy = self.eval(i, self.quad_points(), derivative).T
-            #jx, jy = self.eval(j, self.quad_points(), derivative).T
-            gradi = self.eval(i, self.quad_points(), derivative)
-            gradj = self.eval(j, self.quad_points(), derivative)
-            if c is None:
-                #integrand = ix*jx + iy*jy; 
-                integrand = np.zeros(self.n_quad())
-                inv_jaco = self.__ijacobis
-                for k in range(self.n_quad()):
-                    tempi = np.dot(gradi[k,:], inv_jaco[k,:,:])
-                    tempj = np.dot(gradj[k,:], inv_jaco[k,:,:])
-                    integrand[k] = np.dot(tempi,tempj)
                 
-            else:
-                if callable(c): # <============================ variable coefficient
-                    c_eval = c(self.quad_points())
-                    if c_eval.ndim == 3: # <------------------- tensor valued 
-                        integrand = c_eval[:,1,1]*ix*jx + c_eval[:,1,2]*ix*jy \
-                                  + c_eval[:,2,1]*iy*jx + c_eval[:,2,2]*iy*jx
-                    else: # <---------------------------------- scalar valued 
-                        integrand = c_eval*(ix*jx + iy*jy)
-                else: # <====================================== constant coefficient
-                    if len(c) == 2: # <------------------------ tensor 
-                        integrand = c[1,1]*ix*jx + c[1,2]*ix*jy \
-                                  + c[2,1]*iy*jx + c[2,2]*iy*jx
-                    else: # <---------------------------------- scalar 
-                        integrand = c*(ix*jx + iy*jy)
-            #integrand *= self.__ijacobi_dets**2
-        else:
-            phi_i = self.eval(i, self.quad_points(), derivative)
-            phi_j = self.eval(j, self.quad_points(), derivative)
-            if c is None:
-                integrand = phi_i*phi_j
-            else:
-                if callable(c):
-                    integrand = phi_i*phi_j*c(self.quad_points())
-                else:
-                    integrand = c*phi_i*phi_j
-        #print(self.jacobi_dets())
-        #print(self.measure())
-        #print(self.quad_weights())
-        #print(integrand*self.jacobi_dets()*self.quad_weights())
-        #print("========================================")
-        return sum(integrand*self.jacobi_dets()*self.quad_weights())#/(2*self.measure())
-                    
     def integrate_phi_f(self, i, f):
-        """Integrate product of shape function i and function f """
+        """Integrate product of shape function and function f 
+        Input:
+            f   - (scalar) function or constant
+        Output: 
+            integral of f*phi_i over element"""
+
+        # evaluate f at quad points
         if callable(f):
-            integrand = self.eval(i, self.quad_points(), derivative=False)*f(self.quad_points())
+            f_eval = f(self.map_to_elt(self.quad_points()))
         else:
-            integrand = self.eval(i, self.quad_points(), derivative=False)*f
+            f_eval = f
+
+        # return integral
+        integrand = self.eval(i, self.quad_points(), derivative=False)*f_eval
         return np.sum(integrand*self.jacobi_dets()*self.quad_weights())
 
 

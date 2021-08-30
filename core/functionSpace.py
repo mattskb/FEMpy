@@ -8,12 +8,12 @@ class Space:
         fe              - Finite Element 
         gauss           - degree of Gaussian quadrature (optional, default is 4)
     """
-    def __init__(self, mesh, deg, gauss=4, gcheck=False):
+    def __init__(self, mesh, deg, gauss=4):
         # set data
         self.__gauss = gauss                
         self.__mesh = mesh                            
         self.__deg = deg
-        self.__fe = Element(deg, gauss, gcheck)       
+        self.__fe = Element(deg, gauss)       
 
         ndofs = mesh.dof_to_coords()                         
 
@@ -221,17 +221,24 @@ if __name__ == '__main__':
         from math import pi
         rhs = [lambda x: 32.*(x[:,0]*(1.-x[:,0]) + x[:,1]*(1.-x[:,1])),
                -6,
-               lambda x: 2*pi*pi*np.sin(pi*x[:,0])*np.cos(pi*x[:,1])]
+               lambda x: 2*pi*pi*np.sin(pi*x[:,0])*np.cos(pi*x[:,1]),
+               lambda x: -2*(x[:,0]**2 - x[:,0] + x[:,1]**2 - x[:,1] + 0.5),
+               lambda x: -6*(x[:,0] + x[:,1])]
+
         u_ex = [lambda x: 16.*x[:,0]*(1.-x[:,0])*x[:,1]*(1.-x[:,1]),
-                lambda x: 1 + x[:,0]**2 + 2*x[:,1]**2,
-                lambda x: np.sin(pi*x[:,0])*np.cos(pi*x[:,1])]
+                lambda x: 1 + np.power(x[:,0],2) + 2*np.power(x[:,1],2),
+                lambda x: np.sin(pi*x[:,0])*np.cos(pi*x[:,1]), 
+                lambda x: np.power((x[:,0]-0.5),2) * np.power((x[:,1]-0.5),2),
+                lambda x: np.power(x[:,0],3) + np.power(x[:,1],3)]
 
         return {"rhs": rhs[n], "u_ex": u_ex[n]}
 
 
-    dirichlet_ex(dirichlet_data(2), n=16, deg=1, gauss=2, diag='l', plot=True)
+    dirichlet_ex(dirichlet_data(3), n=16, deg=1, gauss=4, diag='r', plot=True)
+
     #neuman_ex(n=16, deg=1, gauss=4, diag='r', plot=True)
     #gauss_test(n=2, deg=1, gauss=4, diag='l')
 
+    
 
 
