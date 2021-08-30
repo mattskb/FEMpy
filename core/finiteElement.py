@@ -228,7 +228,7 @@ class Element:
 
         inv_jaco = self.__ijacobis
 
-        # chain rule, i.e., dx_phi = dxi_phi_ref * dxi / dx 
+        # chain rule, i.e., dx_phi = dxi_phi_ref * dxi/dx 
         gradi = np.array([np.sum(gradi*inv_jaco[:,0,:],1), np.sum(gradi*inv_jaco[:,1,:],1)]).T
         gradj = np.array([np.sum(gradj*inv_jaco[:,0,:],1), np.sum(gradj*inv_jaco[:,1,:],1)]).T
 
@@ -255,6 +255,16 @@ class Element:
         integrand = self.eval(i, self.quad_points(), derivative=False)*f_eval
         return np.sum(integrand*self.jacobi_dets()*self.quad_weights())
 
+    def norm(self, u, f=None, p=2):
+
+        if callable(f):
+            f_eval = f(self.map_to_elt(self.quad_points()))
+        else:
+            f_eval = f if bool(f) else 1
+
+        integrand = np.power(np.sum([self.eval(j, self.quad_points(), False)*u[j] 
+            for j in range(self.n_dofs())],axis=0)-f_eval,p)
+        return sum(np.abs(integrand*self.jacobi_dets())*self.quad_weights())
 
 #--------------------------------------------------------------------------------------#
 #--------------------------------------------------------------------------------------#
@@ -376,7 +386,7 @@ if __name__ == "__main__":
     #map_test(n=4, deg=5,diag="r", gauss=1) 
     #integral_test(deg=1,gauss=2)
     #assemble_test(n=7,gauss=1)
-    rhs_test(gauss=1)
+    #rhs_test(gauss=1)
 
     from meshing import RectangleMesh
     n = 2; gauss = 4

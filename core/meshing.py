@@ -277,7 +277,7 @@ class Mesh:
             grid                - True if grid lines are shown (default: False)
             savefig             - file name in case of saved figure 
             boundary            - True if boundary DOFs indicated, can also be one or 
-                                  more names of boundary groups (names in list if more than one)
+                                    more names of boundary groups (names in list if more than one)
         """
         dof_to_coords = kwargs.pop("dof_to_coords",None)
         title = kwargs.pop("title",None)
@@ -403,6 +403,7 @@ if __name__ == '__main__':
         #dof_to_coords, elt_to_dofs = regular_mesh_dofs(([1,0],[1,0]), (2,2), 2, "right")
 
     def dof_test(n=1, diag="r", deg=1):
+        """ plot element wise DOFs """
 
         mesh = RectangleMesh(nx=n,ny=n,deg=deg,diag=diag)
 
@@ -414,7 +415,18 @@ if __name__ == '__main__':
             if j > 10:
                 break
 
+    def mesh_test(n=16, deg=1, diag="r"):
+        """ mesh class test """
+        rect_mesh = RectangleMesh(nx=n,ny=n,deg=deg,diag=diag)
+
+        elt_to_vertex = rect_mesh.elt_to_vertex()
+        vertex_to_coords = rect_mesh.vertex_to_coords()
+
+        mesh = Mesh(vertex_to_coords, elt_to_vertex)
+        mesh.deg()
+
 
     n = 10
     #rectangle_mesh_test(nx=n, ny=n, diag="r", deg=2)
-    dof_test(n=4, diag="l", deg=1)
+    #dof_test(n=4, diag="l", deg=1)
+    mesh_test()
